@@ -1,0 +1,16 @@
+# API and worker only. FalkorDB, Postgres, and R2 stay outside this instance.
+services:
+  api:
+    build: .
+    env_file:
+      - .env
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+
+  worker:
+    build: .
+    command: ["python", "-m", "app.utilities.worker"]
+    env_file:
+      - .env
+    restart: unless-stopped

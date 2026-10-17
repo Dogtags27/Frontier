@@ -1,0 +1,48 @@
+# Development wiring. The falkordb service is the piece removed when the graph moves to a VM.
+services:
+  falkordb:
+    image: falkordb/falkordb:latest
+    ports:
+      - "6379:6379"
+
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: frontier
+      POSTGRES_PASSWORD: frontier
+      POSTGRES_DB: frontier
+    ports:
+      - "5432:5432"
+
+  api:
+    build: .
+    env_file:
+      - ../.env
+    environment:
+      FALKORDB_HOST: falkordb
+      FALKORDB_PORT: "6379"
+      DATABASE_URL: postgresql://frontier:frontier@postgres:5432/frontier?sslmode=disable
+      MANIFEST_PATH: /app/manifest.json
+    volumes:
+      - ../data/extract/manifest.json:/app/manifest.json:ro
+    ports:
+      - "8000:8000"
+    depends_on:
+      - falkordb
+      - postgres
+
+  worker:
+    build: .
+    command: ["python", "-m", "app.utilities.worker"]
+    env_file:
+      - ../.env
+    environment:
+      FALKORDB_HOST: falkordb
+      FALKORDB_PORT: "6379"
+      DATABASE_URL: postgresql://frontier:frontier@postgres:5432/frontier?sslmode=disable
+      MANIFEST_PATH: /app/manifest.json
+    volumes:
+      - ../data/extract/manifest.json:/app/manifest.json:ro
+    depends_on:
+      - falkordb
+      - postgres

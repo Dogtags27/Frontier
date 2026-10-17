@@ -1,0 +1,40 @@
+{
+  "papers": 997,
+  "foundation": 299,
+  "recent": 698,
+  "prompt_version": "d0-6",
+  "extraction_model": "gpt-4.1-mini",
+  "completion_cap": 3000,
+  "extraction_finish": "stop",
+  "sentences": 658126,
+  "sentence_failures": [],
+  "survey_like": 50,
+  "claims_embedded": 26346,
+  "claim_link_rows": 31627,
+  "claims_with_a_link": 27103,
+  "links_by_source": {
+    "sentence": 4032,
+    "lexical": 33020,
+    "llm": 17201
+  },
+  "model_linking_pass": "gpt-4.1-mini on unlinked claims, 17201 new links, one paper per call",
+  "canonical_nodes": {
+    "problem": 3941,
+    "method": 8300,
+    "dataset": 1728,
+    "metric": 1864
+  },
+  "alias_rows": 16294,
+  "canonical_names": "multi-member clusters named by gpt-4.1-mini; singletons keep their spelling",
+  "embedding_model": "text-embedding-3-small",
+  "embedding_dimension": 1536,
+  "label_embedding_tokens": 135439,
+  "node_embedding_tokens": 1506406,
+  "sources": "arXiv metadata and PDFs, Semantic Scholar citation edges",
+  "model_job_tokens": {
+    "prompt": 1213308,
+    "cached": 0,
+    "completion": 285142,
+    "usd": 0.9416
+  }
+}

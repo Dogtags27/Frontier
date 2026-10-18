@@ -6,7 +6,7 @@ A research companion for computer science papers. One shared FalkorDB graph hold
 **API:** [frontier-backend-api.duckdns.org](https://frontier-backend-api.duckdns.org) · `GET /healthz`  
 **Tracks:** Agents That Act on Connected Data, and Agent Memory and Coordination.
 
-The corpus, the graph model, and the product requirements are the participant's work. Cursor was the coding assistant for the implementation. The participant reviewed the code and can explain the model, the queries, and the architecture.
+The corpus, the graph model, and the product requirements are the my original work. Cursor was the coding assistant for the implementation of features and services. I have reviewed the code and can explain the model, the queries in this submission and also the underlying architecture.
 
 ## Architecture
 
@@ -47,8 +47,6 @@ flowchart TB
   worker -->|agent step| llm
 ```
 
-Stadiums are clients. The hexagon is the only public door on the API host. Rectangles are stateless processes. Cylinders are stores. FalkorDB is drawn inside the host because it is a container beside the API, on the Docker network `frontier`, and a rebuild of the API image does not touch it.
-
 | Store | What it holds | What it is not for |
 | --- | --- | --- |
 | FalkorDB | `frontier_corpus`, one `frontier_ws_<user>` per student, the `WorkItem` queue, and the Redis hint list the worker blocks on | Accounts, PDF bytes, or model prose |
@@ -56,7 +54,7 @@ Stadiums are clients. The hexagon is the only public door on the API host. Recta
 | Cloudflare R2 | The PDFs | Anything the agent reasons over |
 | Supabase Auth | The student session, including Google sign-in, and the token an external agent refreshes after `/oauth/consent` | Product data |
 
-Remove the FalkorDB cylinder and search, citation paths, gaps, notes, scooping, and the worker queue stop. The API cannot rebuild a path from Postgres. Postgres does not store `CITES`. R2 does not store who read what. That is the test for this hackathon: the graph is the product, not a picture drawn on top of the other stores.
+As evident form the architecture and codebase, FalkorDB is an integral part of the project and often we have made use of graph traversal techniques and relational graph node/edge behaviour which would be tedious and difficult to implement in a flat SQL-based DB.
 
 A request takes one of two doors and then the same tools. The browser talks to FastAPI. Cursor or Claude talks to `https://frontier-backend-api.duckdns.org/mcp/` (keep the slash). Both are checked for a student JWT. A missing token gets a `401` whose `WWW-Authenticate` header points at `/.well-known/oauth-protected-resource`. A supervisor token is refused. The model never writes Cypher. It picks a tool. The query for that tool is a string in `backend/app/models/queries.py`.
 
@@ -139,7 +137,7 @@ Memory is more nodes on this graph, not a second database.
 
 `Handoff` names `from_agent`, `to_agent`, and a precondition such as `gap_ready_for_adversary`. The next agent accepts it only when the gap's status and evidence match that precondition.
 
-## A gap's life
+## A research gap's life
 
 ```mermaid
 stateDiagram-v2
@@ -167,10 +165,8 @@ Each move is one Cypher statement, and it writes an `Event` in that same stateme
 An agent does not invent a reading path or a verdict and then look for support. It calls graph tools and shows the path it walked.
 
 - **Connected reasoning.** `citation_chain` walks `CITES`. `shortest_path` calls FalkorDB `algo.SPpaths` and returns the papers on the path, at most four hops. Gap search looks for the empty task and method cell, then ranks it from neighboring papers and evidence already on the graph.
-- **The same tools, two doors.** The chat in the app and an external client both use the toolkit at `https://frontier-backend-api.duckdns.org/mcp/`. After the student allows access, the agent can search, walk citations, record a note, and open a gap on that student's graph only.
+- **The same tools, two doors.** The chat in the app and an external client both use the toolkit at `https://frontier-backend-api.duckdns.org/mcp/`. After the student allows access, the agent can search, walk citations, record a note, and open a research gap on that student's graph only.
 - **Writes are graph transitions.** Opening a gap, challenging it, killing it, adopting it, or marking it scooped does not update a status column in Postgres and then hope the graph matches. The graph row is the status.
-
-The same pictures are also in [GRAPH.md](GRAPH.md).
 
 ## Run it locally
 
@@ -193,3 +189,11 @@ copy .env.example .env
 ```
 
 Sign in as a student when the browser opens. The tools then write to that student's graph.
+
+## Data
+
+The papers are public computer-science work. Three free and publicly available sources were used to build the corpus:
+
+- [arXiv](https://arxiv.org/) for the PDFs.
+- The [Cornell University arXiv dataset](https://www.kaggle.com/datasets/Cornell-University/arxiv) on Kaggle for titles, abstracts, categories, and years.
+- The [Semantic Scholar Academic Graph API](https://api.semanticscholar.org/api-docs/graph) for the citation edges.

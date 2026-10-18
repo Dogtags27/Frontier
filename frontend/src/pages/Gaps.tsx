@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { ApiError, errorText, post, type GapDetail, type GapItem, type Progress } from "../api";
 import { useChat } from "../chat";
@@ -34,6 +34,12 @@ export function Gaps() {
   const progress = useFetch<Progress>("/students/me/progress");
   const [filter, setFilter] = useState<string>("all");
   const [proposing, setProposing] = useState(false);
+  const detailRef = useRef<HTMLElement>(null);
+
+  // On a single-column layout (phones/tablets), bring the opened gap into view.
+  useEffect(() => {
+    if (id && window.matchMedia("(max-width: 1180px)").matches) detailRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [id]);
 
   const items = list.data?.items || [];
   const shown = items.filter((item) => matches(filter, item.status));
@@ -112,7 +118,7 @@ export function Gaps() {
           )}
         </section>
 
-        <section>{id ? <Detail key={id} id={id} onChange={refresh} plan={progress.data?.reading.plans.find((plan) => plan.gap_id === id)?.summary || ""} /> : <Placeholder />}</section>
+        <section ref={detailRef} style={{ scrollMarginTop: "0.75rem" }}>{id ? <Detail key={id} id={id} onChange={refresh} plan={progress.data?.reading.plans.find((plan) => plan.gap_id === id)?.summary || ""} /> : <Placeholder />}</section>
       </div>
     </div>
   );

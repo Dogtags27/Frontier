@@ -112,7 +112,7 @@ export function PaperPage() {
             <Skeleton h="1rem" w="30%" />
           </>
         )}
-        <div className="row wrap">
+        <div className="row wrap paper-actions">
           <a className="btn" href={original} target="_blank" rel="noreferrer">
             <Icon name="external" />
             Open original PDF

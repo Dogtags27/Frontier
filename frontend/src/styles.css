@@ -987,3 +987,54 @@ button, .nav-link, .tab, .chip-btn { -webkit-tap-highlight-color: transparent; t
   .page-title { font-size: 1.4rem; }
   .nav-link { min-width: 3.9rem; }
 }
+
+/* Auth: compact branded banner on small screens instead of hiding the art */
+@media (max-width: 860px) {
+  .auth { grid-template-rows: auto 1fr; }
+  .auth-art { display: flex; padding: 1.25rem 1.25rem 1.5rem; gap: 0.9rem; justify-content: flex-start; }
+  .auth-art h2 { font-size: 1.6rem; }
+  .auth-art p, .auth-points { display: none; }
+  .auth-art .contours { width: 16rem; inset: auto -4rem -5rem auto; }
+  .auth-form-side { padding: 1.5rem 1.1rem 2.5rem; place-items: start center; }
+}
+
+/* Mobile bottom nav: every item visible, equal width, no sideways scrolling */
+@media (max-width: 760px) {
+  .sidebar { overflow: hidden; gap: 0; justify-content: space-between; }
+  .sidebar-foot { display: contents; }
+  .sidebar .nav-link[data-tour="assistant"] { display: none; } /* the floating button already opens it */
+  .sidebar .nav-link { flex: 1 1 0; min-width: 0; padding: 0.4rem 0.15rem; font-size: 0.64rem; white-space: normal; text-align: center; align-items: center; }
+  .sidebar .nav-link .icon { width: 1.3rem; height: 1.3rem; }
+}
+
+@media (max-width: 760px) {
+  .segmented { display: flex; width: 100%; }
+  .segmented button { text-align: center; }
+  .pf-tabs .segmented { align-self: stretch; }
+}
+
+@media (max-width: 760px) {
+  .avatar.xl { width: 3.8rem; height: 3.8rem; font-size: 1.4rem; }
+  .pf-side { padding: 1.1rem 1rem; }
+  .pf-name { font-size: 1.2rem; margin-top: 0.4rem; }
+}
+
+/* Wide equations scroll inside the paper instead of stretching the whole page */
+.paper table.ltx_equation, .paper table.ltx_equationgroup, .paper table.ltx_eqn_table { display: block; max-width: 100%; overflow-x: auto; overflow-y: hidden; scrollbar-width: thin; }
+.paper { max-width: 100%; }
+.paper .ltx_tabular { display: block; max-width: 100%; overflow-x: auto; }
+@media (max-width: 760px) {
+  .paper .ltx_para, .paper .ltx_theorem, .paper .ltx_proof, .paper .ltx_definition, .paper .ltx_lemma, .paper .ltx_proposition, .paper .ltx_corollary, .paper .ltx_remark { max-width: 100%; overflow-x: auto; overflow-y: hidden; scrollbar-width: thin; }
+}
+@media (max-width: 760px) {
+  .reader-page .tabs { margin-left: -0.75rem; margin-right: -0.75rem; padding: 0 0.75rem; }
+}
+@media (max-width: 380px) {
+  .tabs { margin-left: -0.75rem; margin-right: -0.75rem; padding: 0 0.75rem; }
+}
+.content { overflow-x: clip; }
+@media (max-width: 760px) {
+  .paper-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; }
+  .paper-actions > :first-child { grid-column: 1 / -1; }
+  .paper-actions > .btn { width: 100%; padding-left: 0.5rem; padding-right: 0.5rem; font-size: 0.85rem; }
+}

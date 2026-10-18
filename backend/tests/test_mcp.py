@@ -82,6 +82,11 @@ async def test_an_external_client_walks_a_citation_path():
             assert created.status_code == 200, created.text
             missing = client.post("/mcp", json=_rpc("initialize", {}))
             assert missing.status_code == 401
+            assert "resource_metadata=" in missing.headers["www-authenticate"]
+            meta = client.get("/.well-known/oauth-protected-resource/mcp")
+            assert meta.status_code == 200
+            assert meta.json()["authorization_servers"] == [settings.jwt_issuer]
+            assert meta.json()["resource"].endswith("/mcp/")
 
             opened = client.post(
                 "/mcp",

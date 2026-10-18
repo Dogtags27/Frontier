@@ -1038,3 +1038,7 @@ button, .nav-link, .tab, .chip-btn { -webkit-tap-highlight-color: transparent; t
   .paper-actions > :first-child { grid-column: 1 / -1; }
   .paper-actions > .btn { width: 100%; padding-left: 0.5rem; padding-right: 0.5rem; font-size: 0.85rem; }
 }
+
+.google-btn { gap: 0.6rem; padding: 0.7rem; font-weight: 500; }
+.or-divider { display: flex; align-items: center; gap: 0.8rem; color: var(--text-3); font-size: 0.78rem; margin: -0.2rem 0; }
+.or-divider::before, .or-divider::after { content: ""; flex: 1; height: 1px; background: var(--line); }

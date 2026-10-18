@@ -7,6 +7,7 @@ import { Gaps } from "./pages/Gaps";
 import { Join } from "./pages/Join";
 import { Ledger } from "./pages/Ledger";
 import { PaperPage } from "./pages/Paper";
+import { OAuthConsent } from "./pages/OAuthConsent";
 import { Papers } from "./pages/Papers";
 import { Privacy } from "./pages/Privacy";
 import { Profile } from "./pages/Profile";
@@ -26,7 +27,9 @@ export function App() {
   const supervisor = (node: ReactNode) => <Only role="supervisor">{node}</Only>;
   return (
     <Routes>
-      <Route path="/signin" element={<SignIn />} />      <Route path="/join/:code" element={<Join />} />
+      <Route path="/signin" element={<SignIn />} />
+      <Route path="/oauth/consent" element={<OAuthConsent />} />
+      <Route path="/join/:code" element={<Join />} />
       <Route element={<Shell />}>
         <Route path="/" element={student(<Desk />)} />
         <Route path="/field" element={student(<Field />)} />

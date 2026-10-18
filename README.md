@@ -31,6 +31,16 @@ docker compose -f docker-compose.aws.yml up -d --build
 
 That starts the API and the worker. It does not start FalkorDB or Postgres.
 
+## Use the tools from a coding agent (MCP)
+
+The server speaks MCP over HTTP at `https://frontier-backend-api.duckdns.org/mcp/` (keep the trailing slash). Sign-in uses OAuth, so there is no token to copy. Add the server to the agent and approve the browser prompt with a student account (Google or email).
+
+```json
+{ "mcpServers": { "frontier": { "url": "https://frontier-backend-api.duckdns.org/mcp/" } } }
+```
+
+The agent gets a `401` that points to `/.well-known/oauth-protected-resource`, finds Supabase Auth as the authorization server, and sends you to `/oauth/consent` on the web app. After you allow it, Supabase issues the token and the agent refreshes it on its own. The tools act on that student's private graph only. Supervisor accounts are refused.
+
 ## Graph
 
 `frontier_corpus` is shared: papers, tasks, methods, datasets, metrics, and claims. The edges the product uses are `CITES`, `ADDRESSES`, `USES_METHOD`, `COMPARES_TO`, `EVALUATED_ON`, `REPORTS_METRIC`, and `HAS_CLAIM`. Embeddings stay here.

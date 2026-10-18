@@ -1,10 +1,23 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { Navigate, useSearchParams } from "react-router-dom";
 import { errorText, post } from "../api";
 import { supabase, useAuth } from "../auth";
 import { BrandMark, Contours, ErrorNote, Icon } from "../ui";
 
 const JOIN_KEY = "frontier.join";
+// Where to send the user after sign-in. Set by the OAuth consent page for coding-agent logins.
+export const NEXT_KEY = "frontier.next";
+
+function GoogleMark() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true">
+      <path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9.1 3.6l6.8-6.8C35.8 2.4 30.3 0 24 0 14.6 0 6.5 5.4 2.6 13.2l7.9 6.1C12.4 13.6 17.7 9.5 24 9.5z" />
+      <path fill="#4285F4" d="M46.1 24.6c0-1.6-.1-3.1-.4-4.6H24v9h12.4c-.5 2.9-2.2 5.3-4.6 7l7.2 5.6c4.3-3.9 7.1-9.7 7.1-17z" />
+      <path fill="#FBBC05" d="M10.5 28.7a14.5 14.5 0 0 1 0-9.4l-7.9-6.1a24 24 0 0 0 0 21.6l7.9-6.1z" />
+      <path fill="#34A853" d="M24 48c6.5 0 11.9-2.1 15.900-5.800l-7.200-5.600c-2 1.400-4.600 2.200-8.700 2.200-6.300 0-11.600-4.100-13.500-9.800l-7.900 6.100C6.500 42.600 14.600 48 24 48z" />
+    </svg>
+  );
+}
 
 export function SignIn() {
   const { session, user, ready, refresh, signOut } = useAuth();
@@ -19,8 +32,19 @@ export function SignIn() {
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
   const [show, setShow] = useState(false);
+  const finishingNow = Boolean(session) && ready && !user;
+
+  // A first-time Google sign-in has no app account yet: pre-fill the name from Google.
+  useEffect(() => {
+    if (!finishingNow || name) return;
+    const meta = session?.user.user_metadata as { full_name?: string; name?: string } | undefined;
+    const guess = meta?.full_name || meta?.name || "";
+    if (guess) setName(guess);
+  }, [finishingNow, session, name]);
 
   if (user) {
+    const next = sessionStorage.getItem(NEXT_KEY);
+    if (next && next.startsWith("/oauth/consent")) return <Navigate to={next} replace />;
     const joining = sessionStorage.getItem(JOIN_KEY);
     if (user.signup_role === "student" && joining) return <Navigate to={`/join/${joining}`} replace />;
     return <Navigate to={user.signup_role === "supervisor" ? "/roster" : "/"} replace />;
@@ -89,6 +113,21 @@ export function SignIn() {
 
   const showProfile = finishing || mode === "signup";
 
+  async function google() {
+    setError("");
+    setNotice("");
+    if (!supabase) {
+      setError("Sign-in is not configured. Add the Supabase URL and anon key to the frontend environment.");
+      return;
+    }
+    setBusy(true);
+    const result = await supabase.auth.signInWithOAuth({ provider: "google", options: { redirectTo: `${window.location.origin}/signin` } });
+    if (result.error) {
+      setError(result.error.message);
+      setBusy(false);
+    }
+  }
+
   return (
     <div className="auth">
       <section className="auth-art">
@@ -143,6 +182,13 @@ export function SignIn() {
 
           {!finishing && (
             <>
+              <button className="btn ghost block google-btn" type="button" disabled={busy} onClick={() => void google()}>
+                <GoogleMark />
+                Continue with Google
+              </button>
+              <div className="or-divider">
+                <span>or use email</span>
+              </div>
               <div className="field">
                 <label htmlFor="email">Email</label>
                 <input id="email" className="input" type="email" autoComplete="email" required value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@university.edu" />

@@ -11,6 +11,7 @@ from app.api.accounts import router as accounts_router
 from app.api.admin import router as admin_router
 from app.api.health import router as health_router
 from app.api.mcp_server import build_server
+from app.api.oauth_meta import router as oauth_meta_router
 from app.api.papers import router as papers_router
 from app.api.students import router as students_router
 from app.constants import DISCOVERY
@@ -49,6 +50,7 @@ def create_app(settings=None, verifier=None, transport=None) -> FastAPI:
     app = FastAPI(title="Frontier", lifespan=lifespan)
     app.mount("/mcp", mcp_app)
     app.include_router(health_router)
+    app.include_router(oauth_meta_router)
     app.include_router(accounts_router)
     app.include_router(students_router)
     app.include_router(papers_router)
@@ -60,13 +62,16 @@ def create_app(settings=None, verifier=None, transport=None) -> FastAPI:
             return await call_next(request)
         from app.api.mcp_server import caller
 
+        from app.api.oauth_meta import challenge
+
+        box = request.app.state.container
         header = request.headers.get("authorization") or ""
         if not header.lower().startswith("bearer "):
             return JSONResponse(
                 status_code=401,
                 content={"code": "unauthorized", "message": "missing token", "detail": None},
+                headers=challenge(request, box),
             )
-        box = request.app.state.container
         try:
             who = box.verifier.verify(header.split(" ", 1)[1].strip())
             principal = await box.accounts.principal_for(who)
@@ -86,6 +91,7 @@ def create_app(settings=None, verifier=None, transport=None) -> FastAPI:
             return JSONResponse(
                 status_code=exc.status,
                 content={"code": exc.code, "message": exc.message, "detail": exc.detail},
+                headers=challenge(request, box) if exc.status == 401 else None,
             )
         token = caller.set((box, principal))
         try:

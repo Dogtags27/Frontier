@@ -41,6 +41,8 @@ class Settings(BaseSettings):
     chat_model: str = "gpt-4.1-mini"
     embed_model: str = "text-embedding-3-small"
     supabase_url: str = ""
+    # Public https origin of this API, used in OAuth discovery. Blank: derived from the request.
+    public_url: str = ""
     supabase_jwt_issuer: str = ""
     supabase_jwt_audience: str = "authenticated"
     admin_emails: str = ""

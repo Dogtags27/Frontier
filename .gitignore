@@ -1,4 +1,10 @@
-data/
+# Corpus build scripts in data/*.py are tracked. Generated rows and PDFs are not.
+data/*
+!data/*.py
+data/pdfs/
+data/extract/
+data/cache/
+data/demo/
 __pycache__/
 *.pyc
 .venv/

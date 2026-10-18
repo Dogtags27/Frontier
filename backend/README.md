@@ -24,7 +24,7 @@ copy .env.example .env
 
 ## Production
 
-The running API is [frontier-backend-api.duckdns.org](https://frontier-backend-api.duckdns.org). The app is [frontend-frontier-delta.vercel.app](https://frontend-frontier-delta.vercel.app). A push to `main` that changes `backend/` rebuilds the API and the worker. FalkorDB stays up. The layout is in the repository [README](../README.md) and [GRAPH.md](../GRAPH.md).
+The running API is [frontier-backend-api.duckdns.org](https://frontier-backend-api.duckdns.org). The app is [frontend-frontier-delta.vercel.app](https://frontend-frontier-delta.vercel.app). The API and the worker are rebuilt by hand. FalkorDB stays up across those rebuilds. The layout is in the repository [README](../README.md) and [GRAPH.md](../GRAPH.md).
 
 ## Graph
 

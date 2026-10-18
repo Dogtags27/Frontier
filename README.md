@@ -17,7 +17,7 @@ flowchart LR
   web[Vercel<br/>React]
   api[AWS<br/>FastAPI and worker]
   auth[Supabase Auth]
-  graph[FalkorDB<br/>corpus plus one graph per student]
+  falkor[FalkorDB<br/>corpus plus one graph per student]
   pg[Postgres<br/>accounts and sentences]
   r2[Cloudflare R2<br/>PDFs]
   llm[OpenAI]
@@ -26,14 +26,14 @@ flowchart LR
   agent -->|MCP at /mcp/| api
   web --> auth
   api --> auth
-  api --> graph
+  api --> falkor
   api --> pg
   api --> r2
   api --> llm
-  graph --> api
+  falkor --> api
 ```
 
-The web app and the MCP server call one API. Supabase signs the student in, including Google sign-in, and issues the token an external agent refreshes after the student approves it at `/oauth/consent`. FalkorDB is the system of record for papers and for memory. Postgres holds accounts, usage, and the original sentences behind a citation. R2 holds the PDFs. A push to `main` that changes `backend/` rebuilds the API and the worker on the AWS host. The FalkorDB container is not part of that deploy.
+The web app and the MCP server call one API. Supabase signs the student in, including Google sign-in, and issues the token an external agent refreshes after the student approves it at `/oauth/consent`. FalkorDB is the system of record for papers and for memory. Postgres holds accounts, usage, and the original sentences behind a citation. R2 holds the PDFs. The API and the worker run on one AWS host. FalkorDB runs beside them, and changing the API image does not touch that container.
 
 Remove FalkorDB and search, citation paths, gaps, notes, and scooping stop. The API cannot answer those from Postgres.
 

@@ -9,6 +9,9 @@ Two signals are kept:
 - open_limitation: a failure, limit, assumption, or future-work claim names a
   method on the task, and no later research paper uses that family there.
 
+Every gap that is written is challenged in the same job by the Adversary, so the
+student gets verdicts, not a pile of candidates.
+
 Score = neighbor weight * (task breadth + other-task breadth) + evidence weight * claim strength
         - distance weight * how far the cell sits from papers the student has read.
 """
@@ -39,14 +42,22 @@ class GapHunter(Agent):
 
     async def handle(self, ctx, item: dict) -> dict:
         payload = item.get("payload") or {}
-        seeds = await self._seeds(ctx, str(payload.get("paper_id") or ""))
+        paper_id = str(payload.get("paper_id") or "")
+        seeds, origin = await self._seeds(ctx, paper_id)
         ctx.trace.step(
             "seed",
-            {"paper_id": payload.get("paper_id") or "", "note": str(payload.get("note") or "")[:120]},
-            f"{len(seeds)} tasks" if seeds else "no tasks on the seed paper",
+            {"paper_id": paper_id, "note": str(payload.get("note") or "")[:120]},
+            f"{len(seeds)} tasks from {origin}" if seeds else "no tasks found",
         )
         if not seeds:
-            return answer("No tasks were found on the seed paper, so no cell was scored.", [], ctx.trace, [CAVEAT])
+            body = answer(
+                "I could not find a task to search around. Open a paper that has been processed, or tell me a topic, and I will search from there.",
+                [],
+                ctx.trace,
+                [CAVEAT],
+            )
+            await self._remember(ctx, payload, body)
+            return body
         ranked = await self._rank(ctx, seeds)
         ctx.trace.step("rank", {"tasks": [row["slug"] for row in seeds]}, f"{len(ranked)} gaps cleared the bar")
         written = []
@@ -54,23 +65,62 @@ class GapHunter(Agent):
             saved = await self._write(ctx, candidate)
             if saved:
                 written.append(saved)
-        follow = None
-        if written:
-            follow = await self._hand_off(ctx, written[0])
-        body = answer(_summary(written), [_evidence(row) for row in written], ctx.trace, [CAVEAT])
-        if follow:
-            body["job_id"] = follow["id"]
+        await self._review(ctx, written)
+        written.sort(key=_order)
+        body = answer(_report(origin, written, bool(ranked)), [_evidence(row) for row in written], ctx.trace, [CAVEAT])
+        body["gaps"] = [{"id": row["id"], "status": row["status"], "reason": row.get("reason", "")} for row in written]
+        await self._remember(ctx, payload, body)
         return body
 
-    async def _seeds(self, ctx, paper_id: str) -> list[dict]:
-        if not paper_id:
-            return []
+    async def _remember(self, ctx, payload: dict, body: dict) -> None:
+        conversation_id = str(payload.get("conversation_id") or "")
+        if not conversation_id or ctx.memory is None:
+            return
+        try:
+            await ctx.memory.add_chat_turn(ctx.workspace, conversation_id, "assistant", body["text"], body["evidence"], "gap_result")
+        except Exception:
+            return
+
+    async def _seeds(self, ctx, paper_id: str) -> tuple[list[dict], str]:
+        if paper_id:
+            found = await self._tasks_of(ctx, paper_id)
+            if found:
+                return found, found[0]["title"] or paper_id
+        reads = (await self._reads(ctx))[:6]
+        seeds: dict[str, dict] = {}
+        for read in reads:
+            for row in await self._tasks_of(ctx, read):
+                seeds.setdefault(row["slug"], row)
+        return list(seeds.values())[:8], "your reading"
+
+    async def _tasks_of(self, ctx, paper_id: str) -> list[dict]:
         rows = await ctx.read_corpus(Q.PAPER_TASKS, {"id": paper_id})
         return [
             {"slug": as_text(row[0]), "name": as_text(row[1]), "year": int(row[2] or 0), "title": as_text(row[3])}
             for row in rows
         ]
 
+    async def _review(self, ctx, written: list[dict]) -> None:
+        """Challenge every new gap right away, so nothing waits on the student to ask."""
+        from app.agents.adversary import Adversary
+
+        judge = Adversary()
+        for row in written:
+            if row.get("existing"):
+                continue
+            try:
+                handoff = await ctx.gaps.open_handoff(ctx.workspace, row["id"], "adversary", self.name)
+                result = await judge.handle(ctx, {"payload": {"gap_id": row["id"], "handoff_id": handoff["id"]}})
+            except Exception:
+                row["reason"] = "The check did not finish. Ask me to challenge this gap again."
+                continue
+            row["status"] = result.get("status") or row["status"]
+            row["reason"] = result.get("text") or ""
+        ctx.trace.step(
+            "challenge",
+            {"gaps": len(written)},
+            f"{sum(1 for row in written if row['status'] == 'alive')} alive, {sum(1 for row in written if row['status'] == 'killed')} killed",
+        )
     async def _rank(self, ctx, seeds: list[dict]) -> list[dict]:
         tasks = [row["slug"] for row in seeds]
         names = {row["slug"]: row["name"] for row in seeds}
@@ -107,9 +157,9 @@ class GapHunter(Agent):
                     distance,
                     0,
                     (
-                        f"No research paper in this corpus addresses {names.get(task, task)} "
-                        f"with {family}. The family is used on {other} other tasks, "
-                        f"reached through {', '.join(sorted(channels))}."
+                        f"No paper in this corpus applies {family} to {names.get(task, task)}. "
+                        f"{family} is used on {other} other tasks, "
+                        f"linked here through {', '.join(sorted(channels))}."
                     ),
                 )
             )
@@ -221,12 +271,19 @@ class GapHunter(Agent):
             },
         )
         if not rows:
-            return None
+            known = await ctx.workspace.query(Q.GAP_SIGNAL, {"id": candidate["id"]})
+            if not known:
+                return None
+            attempts = await ctx.workspace.query(Q.GAP_ATTEMPTS, {"id": candidate["id"]})
+            reason = as_text(attempts[-1][1]) if attempts else ""
+            return candidate | {"status": as_text(known[0][1]), "existing": True, "reason": reason}
         await ctx.gaps.note_cell(ctx.workspace.name, candidate["task"], method, candidate["family"], True)
         evidence = await self._attach(ctx, candidate)
+        row = candidate | {"status": as_text(rows[0][1]), "version": int(rows[0][2] or 1), "evidence": evidence}
         if len(evidence) < 2:
-            return None
-        return candidate | {"status": as_text(rows[0][1]), "version": int(rows[0][2] or 1), "evidence": evidence}
+            row["existing"] = True
+            row["reason"] = "Only one supporting paper was found, so I have not challenged this yet."
+        return row
 
     async def _attach(self, ctx, candidate: dict) -> list[dict]:
         refs = []
@@ -251,19 +308,9 @@ class GapHunter(Agent):
             seen.add((kind, ref_id))
             await ctx.gaps.add_evidence(ctx.workspace, candidate["id"], ref_id, kind)
             kept.append({"ref_type": kind, "ref_id": ref_id})
-            if len(kept) == 2:
+            if len(kept) == 3:
                 break
         return kept
-
-    async def _hand_off(self, ctx, top: dict) -> dict:
-        handoff = await ctx.gaps.open_handoff(ctx.workspace, top["id"], "adversary", self.name)
-        job = await ctx.queue.enqueue(
-            ctx.workspace.name,
-            "challenge_gap",
-            {"gap_id": top["id"], "handoff_id": handoff["id"]},
-        )
-        ctx.trace.step("enqueue", {"gap_id": top["id"]}, f"challenge {job['id']}")
-        return job
 
 
 def _score(ctx, neighbor: float, evidence: float, distance: int) -> float:
@@ -293,18 +340,52 @@ def _candidate(task, name, family, signal, score, distance, year, text, claim_id
     }
 
 
-def _summary(written: list[dict]) -> str:
-    if not written:
-        return "No cell cleared the neighbor bar."
-    top = written[0]
-    return f"Top gap: {top['text']}"
+STATUS_ORDER = {"alive": 0, "challenged": 1, "candidate": 2, "adopted": 3, "killed": 4, "scooped": 5}
+
+
+def _order(row: dict):
+    return (STATUS_ORDER.get(row["status"], 6), -(row["score"] or 0), row["id"])
+
+
+def _label(row: dict) -> str:
+    if row["signal"] == "empty_cell":
+        return f"{row['family']} for {row['task_name']}"[:100]
+    return row["text"][:110]
 
 
 def _evidence(row: dict) -> dict:
     return {
         "ref_type": "gap",
         "ref_id": row["id"],
-        "title": row["text"][:180],
+        "title": _label(row),
+        "status": row["status"],
         "signal": row["signal"],
         "score": row["score"],
     }
+
+
+def _report(origin: str, rows: list[dict], searched: bool) -> str:
+    where = f" around {origin}" if origin else ""
+    if not rows:
+        if searched:
+            return f"I searched{where} and nothing cleared the bar. The corpus may be thin there, so try a broader topic or read a few more papers first."
+        return f"I searched{where} and found no task and method pairing that the surrounding papers support."
+    alive = [row for row in rows if row["status"] == "alive"]
+    killed = [row for row in rows if row["status"] == "killed"]
+    pending = [row for row in rows if row["status"] in {"candidate", "challenged"}]
+    noun = "gap" if len(rows) == 1 else "gaps"
+    head = f"I found {len(rows)} possible {noun}{where} and challenged each one against the corpus."
+    parts = [head]
+    if alive:
+        parts.append(f"{len(alive)} still hold up:")
+        for index, row in enumerate(alive[:4], 1):
+            parts.append(f"{index}. {_label(row)}. {row.get('reason', '')}".strip())
+    else:
+        parts.append("None of them held up.")
+    if killed:
+        names = "; ".join(_label(row) for row in killed[:3])
+        parts.append(f"{len(killed)} ruled out because the work already exists: {names}.")
+    if pending:
+        parts.append(f"{len(pending)} could not be challenged yet and stay as candidates.")
+    parts.append("Ask me to plan an experiment for the first one, or open Open questions to see every check.")
+    return "\n".join(parts)

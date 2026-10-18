@@ -2,7 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { Link } from "react-router-dom";
 import { api, errorText, streamChat, type Conversation, type Evidence, type Job, type Mark, type TraceStep, type Turn } from "./api";
 import { useAuth } from "./auth";
-import { copyText, useToast } from "./hooks";
+import { copyText, dataChanged, useToast } from "./hooks";
 import { Badge, Icon, ago, titleCase } from "./ui";
 
 type Msg = {
@@ -78,17 +78,44 @@ const STARTERS = [
 const QUIET_INTENTS = new Set(["clarify", "smalltalk", "refuse", ""]);
 const EMPTY = { marks: [] as Mark[], evidence: [] as Evidence[], trace: [] as TraceStep[], caveats: [] as string[], intent: "", streaming: false, failed: false, job: "", jobStatus: "", jobText: "" };
 
+const fold = (value: string) => value.replace(/[\u2018\u2019\u201c\u201d"]/g, "'").replace(/[\u2013\u2014]/g, "-");
+
+function marksFromEvidence(text: string, evidence: Evidence[]): Mark[] {
+  const folded = fold(text);
+  const found: Mark[] = [];
+  const used = new Set<string>();
+  for (const item of evidence) {
+    if (!item || typeof item !== "object") continue;
+    const title = String(item.title || "");
+    const refId = String(item.ref_id || "");
+    let needle = title.length > 12 ? fold(title) : refId;
+    let start = needle ? folded.indexOf(needle) : -1;
+    if (start < 0 && refId) {
+      needle = refId;
+      start = folded.indexOf(needle);
+    }
+    if (start < 0 || used.has(needle)) continue;
+    used.add(needle);
+    found.push({ start, end: start + needle.length, kind: String(item.ref_type || "paper"), ref_id: refId, title: title || refId });
+  }
+  return found;
+}
+
 function fromTurns(turns: Turn[]): Msg[] {
   return turns
     .filter((turn) => turn.role === "student" || turn.role === "assistant")
-    .map((turn, index) => ({
-      ...EMPTY,
-      id: index + 1,
-      role: turn.role as "student" | "assistant",
-      text: turn.text,
-      evidence: turn.evidence || [],
-      intent: turn.intent || "",
-    }));
+    .map((turn, index) => {
+      const evidence = Array.isArray(turn.evidence) ? turn.evidence : [];
+      return {
+        ...EMPTY,
+        id: index + 1,
+        role: turn.role as "student" | "assistant",
+        text: turn.text,
+        evidence,
+        marks: turn.role === "assistant" ? marksFromEvidence(turn.text, evidence) : [],
+        intent: turn.intent || "",
+      };
+    });
 }
 
 export function ChatDock() {
@@ -178,19 +205,42 @@ export function ChatDock() {
 
   const follow = useCallback(
     async (id: number, jobId: string) => {
-      for (let attempt = 0; attempt < 24; attempt += 1) {
-        await new Promise((resolve) => setTimeout(resolve, 2000));
+      for (let attempt = 0; attempt < 60; attempt += 1) {
+        await new Promise((resolve) => setTimeout(resolve, attempt < 5 ? 1500 : 2500));
         try {
           const job = await api<Job>(`/students/me/jobs/${jobId}`, token);
           const body = job.result?.text || job.result?.summary || "";
-          patch(id, () => ({ jobStatus: job.status, jobText: body }));
-          if (job.status === "done" || job.status === "failed" || job.result) return;
+          if (job.status === "failed") {
+            patch(id, () => ({ jobStatus: "failed", jobText: job.error || "" }));
+            return;
+          }
+          if (job.status === "done" || job.result) {
+            const evidence = (job.result?.evidence as Evidence[]) || [];
+            patch(id, () => ({ jobStatus: "done", jobText: "" }));
+            counter.current += 1;
+            const reply: Msg = {
+              ...EMPTY,
+              id: counter.current,
+              role: "assistant",
+              text: body,
+              evidence,
+              marks: marksFromEvidence(body, evidence),
+              caveats: (job.result?.caveats as string[]) || [],
+              trace: (job.result?.trace as TraceStep[]) || [],
+              intent: "gap_result",
+            };
+            setMessages((prev) => [...prev, reply]);
+            dataChanged();
+            listConvos();
+            return;
+          }
+          patch(id, () => ({ jobStatus: job.status }));
         } catch {
           return;
         }
       }
     },
-    [token, patch],
+    [token, patch, listConvos],
   );
 
   const send = useCallback(
@@ -243,6 +293,7 @@ export function ChatDock() {
               }));
               if (job) follow(bot.id, job);
               listConvos();
+              dataChanged();
             }
           },
           controller.signal,
@@ -433,16 +484,17 @@ function Message({ item }: { item: Msg }) {
       </div>
       {!item.streaming && item.text && (
         <>
-          {item.job && (
+          {item.job && item.jobStatus !== "done" && (
             <div className="alert info small">
               <Icon name="flask" />
               <div>
-                <strong>Gap search {item.jobStatus === "done" ? "finished" : item.jobStatus === "failed" ? "failed" : "running"}.</strong>{" "}
-                {item.jobText || "Results will appear here and on your Gaps page."}
-                {item.jobStatus === "done" && (
+                {item.jobStatus === "failed" ? (
                   <>
-                    {" "}
-                    <Link to="/gaps">Open gaps</Link>
+                    <strong>The gap search failed.</strong> {item.jobText || "Ask me to try again."}
+                  </>
+                ) : (
+                  <>
+                    <strong>Searching and challenging each gap</strong> The verdicts will appear here, and Open questions updates on its own.
                   </>
                 )}
               </div>
@@ -479,7 +531,7 @@ function Marked({ text, marks }: { text: string; marks: Mark[] }) {
     if (mark.start < cursor || mark.end > text.length) return;
     parts.push(text.slice(cursor, mark.start));
     parts.push(
-      <Link key={index} className="mark" to={mark.kind === "paper" && mark.ref_id ? `/papers/${mark.ref_id}` : "/papers"} title={mark.title}>
+      <Link key={index} className="mark" to={mark.kind === "gap" && mark.ref_id ? `/gaps/${mark.ref_id}` : mark.kind === "paper" && mark.ref_id ? `/papers/${mark.ref_id}` : "/papers"} title={mark.title}>
         {text.slice(mark.start, mark.end)}
       </Link>,
     );
@@ -490,19 +542,50 @@ function Marked({ text, marks }: { text: string; marks: Mark[] }) {
 }
 
 function EvidenceList({ items }: { items: Evidence[] }) {
+  const [open, setOpen] = useState(false);
+  const count = items.length;
   return (
-    <div className="evidence" aria-label="Evidence">
-      {items.map((item, index) => {
-        const id = item.ref_id || "";
-        const label = item.title || id || item.ref_type || "Evidence";
-        return item.ref_type === "paper" && id ? (
-          <Link key={`${id}-${index}`} to={`/papers/${id}`} title={label}>
-            {label}
-          </Link>
-        ) : (
-          <span key={`${id}-${index}`}>{label}</span>
-        );
-      })}
+    <div className={`sources ${open ? "open" : ""}`}>
+      <button
+        className="sources-btn"
+        type="button"
+        aria-expanded={open}
+        title={`${count} ${count === 1 ? "reference was" : "references were"} used for this answer`}
+        onClick={() => setOpen((value) => !value)}
+      >
+        <Icon name="book" />
+        Sources
+        <span className="sources-n">{count}</span>
+        <Icon name="arrow" />
+      </button>
+      <span className="sources-tip" role="tooltip">
+        {count} {count === 1 ? "reference" : "references"} used for this answer
+      </span>
+      {open && (
+        <ul className="sources-list">
+          {items.map((item, index) => {
+            const id = item.ref_id || "";
+            const label = item.title || id || item.ref_type || "Evidence";
+            return (
+              <li key={`${id}-${index}`}>
+                {item.ref_type === "paper" && id ? (
+                  <Link to={`/papers/${id}`} title={label}>
+                    <span>{label}</span>
+                    <small className="mono">{id}</small>
+                  </Link>
+                ) : item.ref_type === "gap" && id ? (
+                  <Link to={`/gaps/${id}`} title={label}>
+                    <span>{label}</span>
+                    {item.status && <small className={`gap-state ${item.status}`}>{item.status}</small>}
+                  </Link>
+                ) : (
+                  <span className="plain">{label}</span>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      )}
     </div>
   );
 }

@@ -3,13 +3,13 @@ import { Link, useParams } from "react-router-dom";
 import { errorText, post, type Facets, type Neighbor, type Neighbors, type Paper, type Progress } from "../api";
 import { useAuth } from "../auth";
 import { useChat } from "../chat";
-import { PdfView, type Highlight } from "../pdf";
+import { LineageMap, MixBar, PaperReader, termsFrom, type Claim, type OutlineItem } from "../reader";
 import { fieldName } from "../taxonomy";
 import { ProvenanceStrip, type StripGroup } from "../strip";
-import { useFetch, useToast, useToken } from "../hooks";
+import { dataChanged, useFetch, useToast, useToken } from "../hooks";
 import { Badge, Empty, ErrorNote, Icon, Skeleton, SkeletonList, ago } from "../ui";
 
-type Tab = "overview" | "pdf" | "lineage";
+type Tab = "read" | "lineage";
 const DEPTHS = [
   ["skimmed", "Skimmed"],
   ["read", "Read"],
@@ -23,38 +23,38 @@ export function PaperPage() {
   const token = useToken();
   const notify = useToast();
   const chat = useChat();
-  const [tab, setTab] = useState<Tab>("overview");
-  const [sentenceLimit, setSentenceLimit] = useState(8);
+  const [tab, setTab] = useState<Tab>("read");
+  const [focus, setFocus] = useState(false);
   const [depth, setDepth] = useState<string>("read");
   const [note, setNote] = useState("");
   const [saving, setSaving] = useState(false);
+  const [outline, setOutline] = useState<OutlineItem[]>([]);
 
   const paper = useFetch<Paper>(`/papers/${id}`);
   const facets = useFetch<Facets>(`/papers/${id}/facets`);
-  const sentences = useFetch<{ items: { n: number; original: string }[] }>(`/papers/${id}/sentences?limit=${sentenceLimit}`);
-  const neighbors = useFetch<Neighbors>(tab === "lineage" ? `/papers/${id}/neighbors` : null);
+  const sentences = useFetch<{ items: { n: number; original: string }[] }>(`/papers/${id}/sentences?limit=80`);
+  const neighbors = useFetch<Neighbors>(`/papers/${id}/neighbors`);
   const provenance = useFetch<{ sentence: string; groups: StripGroup[] }>(tab === "lineage" ? `/papers/${id}/provenance` : null);
   const progress = useFetch<Progress>(student ? "/students/me/progress" : null);
-  const claims = useFetch<{ items: { id: string; kind: string; label: string; sentence: string }[] }>(`/papers/${id}/claims`);
+  const claims = useFetch<{ items: Claim[] }>(`/papers/${id}/claims`);
 
   useEffect(() => {
-    setTab("overview");
-    setSentenceLimit(8);
+    setTab("read");
+    setFocus(false);
     setNote("");
   }, [id]);
 
+  useEffect(() => {
+    if (!focus) return;
+    if (chat.open) chat.setOpen(false);
+  }, [focus]);
+
   const mine = progress.data?.reading.recent.find((item) => item.paper_id === id);
   const inPath = progress.data?.reading.path.some((item) => item.paper_id === id);
-  const lines = (sentences.data?.items || []).filter((item) => item.original);
   const info = paper.data;
-  const claimItems = (claims.data?.items || []).filter((item) => item.sentence);
-  const highlights = useMemo<Highlight[]>(
-    () => [
-      ...(claims.data?.items || []).filter((item) => item.sentence).map((item) => ({ text: item.sentence, label: item.label })),
-      ...(sentences.data?.items || []).filter((item) => item.original).map((item) => ({ text: item.original })),
-    ],
-    [claims.data, sentences.data],
-  );
+  const claimItems = useMemo(() => (claims.data?.items || []).filter((item) => item.sentence || item.label), [claims.data]);
+  const terms = useMemo(() => termsFrom(facets.data, claimItems), [facets.data, claimItems]);
+  const original = `https://arxiv.org/pdf/${id}`;
 
   async function save() {
     setSaving(true);
@@ -62,7 +62,7 @@ export function PaperPage() {
       await post("/students/me/reads", token, { paper_id: id, depth, note: note.trim() });
       notify("Saved to your reading record");
       setNote("");
-      progress.reload();
+      dataChanged();
     } catch (err) {
       notify(errorText(err), "error");
     } finally {
@@ -85,7 +85,7 @@ export function PaperPage() {
   }
 
   return (
-    <div className="page">
+    <div className={`page reader-page ${focus ? "is-focus" : ""}`}>
       <Link className="small row" to="/papers" style={{ marginBottom: "1rem", width: "fit-content" }}>
         <Icon name="back" />
         Papers
@@ -113,9 +113,12 @@ export function PaperPage() {
           </>
         )}
         <div className="row wrap">
-          <button className={tab === "pdf" ? "btn" : "btn ghost"} type="button" onClick={() => setTab("pdf")}>
-            <Icon name="doc" />
-            Read the PDF
+          <a className="btn" href={original} target="_blank" rel="noreferrer">
+            <Icon name="external" />
+            Open original PDF
+          </a>
+          <button className={`btn ghost ${focus ? "on" : ""}`} type="button" onClick={() => setFocus((value) => !value)}>
+            {focus ? "Show notes" : "Focus reading"}
           </button>
           {student && (
             <>
@@ -136,13 +139,12 @@ export function PaperPage() {
         </div>
       </header>
 
-      <div className="split mt-lg">
-        <section>
+      <div className="reader-layout mt-lg">
+        <section className="reader-stage">
           <div className="tabs" role="tablist">
             {(
               [
-                ["overview", "Overview"],
-                ["pdf", "PDF"],
+                ["read", "Read"],
                 ["lineage", "Lineage"],
               ] as const
             ).map(([value, label]) => (
@@ -152,66 +154,25 @@ export function PaperPage() {
             ))}
           </div>
 
-          {tab === "overview" && (
-            <div className="col gap-lg">
-              <div>
-                <h2 className="section-title" style={{ marginBottom: "0.6rem" }}>
-                  Abstract
-                </h2>
-                {info ? <p className="abstract">{info.abstract || "No abstract is stored for this paper."}</p> : <SkeletonList rows={3} h="1.1rem" />}
-              </div>
-              {claimItems.length > 0 && (
-                <div>
-                  <h2 className="section-title" style={{ marginBottom: "0.6rem" }}>
-                    Claims
-                  </h2>
-                  <div className="col gap-sm">
-                    {claimItems.map((item) => (
-                      <div className="sentence" key={item.id}>
-                        <div className="row small" style={{ marginBottom: "0.3rem" }}>
-                          <Badge tone="accent">{item.kind || "claim"}</Badge>
-                          <strong>{item.label}</strong>
-                        </div>
-                        {item.sentence}
-                      </div>
-                    ))}
-                    <button className="link-btn small" type="button" style={{ alignSelf: "flex-start" }} onClick={() => setTab("pdf")}>
-                      See these highlighted in the PDF
-                    </button>
-                  </div>
-                </div>
-              )}
-              <div>
-                <h2 className="section-title" style={{ marginBottom: "0.6rem" }}>
-                  Key sentences
-                </h2>
-                {sentences.loading && !lines.length ? (
-                  <SkeletonList rows={3} h="3rem" />
-                ) : lines.length ? (
-                  <div className="col gap-sm">
-                    {lines.map((line) => (
-                      <p className="sentence" key={line.n}>
-                        <span className="mono">#{line.n}</span>
-                        {line.original}
-                      </p>
-                    ))}
-                    {sentenceLimit < 30 && lines.length >= sentenceLimit && (
-                      <button className="btn ghost sm" type="button" style={{ alignSelf: "flex-start" }} onClick={() => setSentenceLimit(30)}>
-                        Show more
-                      </button>
-                    )}
-                  </div>
-                ) : (
-                  <p className="muted">No sentences are stored for this paper.</p>
-                )}
-              </div>
-            </div>
+          {tab === "read" && (
+            <PaperReader
+              id={id}
+              abstract={info?.abstract}
+              terms={terms}
+              claims={claimItems}
+              sentences={sentences.data?.items || []}
+              onOutline={(items) => setOutline((prev) => (prev.length === items.length && prev.every((item, index) => item.id === items[index].id) ? prev : items))}
+            />
           )}
-
-          {tab === "pdf" && <PdfView path={`/papers/${id}/pdf/file`} highlights={highlights} />}
 
           {tab === "lineage" && (
             <div className="col gap-lg">
+              <div>
+                <h2 className="section-title" style={{ marginBottom: "0.6rem" }}>
+                  Citation neighborhood
+                </h2>
+                <LineageMap current={id} title={info?.title} neighbors={neighbors.data} />
+              </div>
               <div>
                 <h2 className="section-title" style={{ marginBottom: "0.6rem" }}>
                   Provenance
@@ -227,71 +188,128 @@ export function PaperPage() {
           )}
         </section>
 
-        <aside className="col sticky">
-          {student && (
+        {!focus && (
+          <aside className="col sticky reader-rail">
+            {tab === "read" && outline.length > 0 && (
+              <div className="card">
+                <div className="card-title row" style={{ marginBottom: "0.6rem" }}>
+                  <Icon name="doc" />
+                  Contents
+                </div>
+                <nav className="outline" aria-label="Sections">
+                  {outline.map((item) => (
+                    <button
+                      key={item.id}
+                      type="button"
+                      className={`outline-item l${item.level}`}
+                      onClick={() => document.getElementById(item.id)?.scrollIntoView({ behavior: "smooth", block: "start" })}
+                    >
+                      {item.text}
+                    </button>
+                  ))}
+                </nav>
+              </div>
+            )}
+            {student && (
+              <div className="card">
+                <div className="card-head">
+                  <span className="card-title row">
+                    <Icon name="book" />
+                    Your reading
+                  </span>
+                  {mine && <span className="small faint">{ago(mine.at)}</span>}
+                </div>
+                {mine?.note && <p className="small muted" style={{ marginBottom: "0.8rem" }}>"{mine.note}"</p>}
+                <div className="segmented" style={{ display: "flex" }}>
+                  {DEPTHS.map(([value, label]) => (
+                    <button key={value} type="button" className={depth === value ? "on" : ""} style={{ flex: 1 }} onClick={() => setDepth(value)}>
+                      {label}
+                    </button>
+                  ))}
+                </div>
+                <textarea className="textarea mt" rows={3} value={note} onChange={(event) => setNote(event.target.value)} placeholder="What stood out? What is the main limit?" aria-label="Reading note" />
+                <button className="btn block mt" type="button" disabled={saving} onClick={save}>
+                  <Icon name="check" />
+                  {saving ? "Saving..." : mine ? "Update record" : "Mark as read"}
+                </button>
+              </div>
+            )}
+
+            <div className="card">
+              <div className="card-title" style={{ marginBottom: "0.8rem" }}>
+                In the graph
+              </div>
+              <MixBar facets={facets.data} />
+              {facets.loading && !facets.data ? (
+                <SkeletonList rows={3} h="1.6rem" />
+              ) : (
+                <div className="col mt">
+                  {(
+                    [
+                      ["tasks", "task", "Tasks"],
+                      ["methods", "method", "Methods"],
+                      ["datasets", "dataset", "Datasets"],
+                      ["metrics", "metric", "Metrics"],
+                    ] as const
+                  ).map(([key, kind, label]) => {
+                    const list = facets.data?.[key] || [];
+                    if (!list.length) return null;
+                    return (
+                      <div key={key}>
+                        <div className="label" style={{ marginBottom: "0.35rem" }}>
+                          {label}
+                        </div>
+                        <div className="chips">
+                          {list.map((item) => (
+                            <Link key={item.slug} className={`chip ${kind}`} to={`/papers?${kind}=${encodeURIComponent(item.slug)}`} title={`Find papers with ${item.name}`}>
+                              {item.name}
+                            </Link>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
+                  {facets.data && !Object.values(facets.data).some((list) => Array.isArray(list) && list.length) && <p className="muted small">No extracted concepts for this paper.</p>}
+                </div>
+              )}
+            </div>
+
             <div className="card">
               <div className="card-head">
                 <span className="card-title row">
-                  <Icon name="book" />
-                  Your reading
+                  <Icon name="layers" />
+                  Neighborhood
                 </span>
-                {mine && <span className="small faint">{ago(mine.at)}</span>}
+                <button className="link-btn small" type="button" onClick={() => setTab("lineage")}>
+                  Open map
+                </button>
               </div>
-              {mine?.note && <p className="small muted" style={{ marginBottom: "0.8rem" }}>"{mine.note}"</p>}
-              <div className="segmented" style={{ display: "flex" }}>
-                {DEPTHS.map(([value, label]) => (
-                  <button key={value} type="button" className={depth === value ? "on" : ""} style={{ flex: 1 }} onClick={() => setDepth(value)}>
-                    {label}
-                  </button>
-                ))}
-              </div>
-              <textarea className="textarea mt" rows={3} value={note} onChange={(event) => setNote(event.target.value)} placeholder="What stood out? What is the main limit?" aria-label="Reading note" />
-              <button className="btn block mt" type="button" disabled={saving} onClick={save}>
-                <Icon name="check" />
-                {saving ? "Saving..." : mine ? "Update record" : "Mark as read"}
-              </button>
+              <NeighborPeek items={neighbors.data?.cites} label="Builds on" />
+              <NeighborPeek items={neighbors.data?.cited_by} label="Built on by" />
             </div>
-          )}
-
-          <div className="card">
-            <div className="card-title" style={{ marginBottom: "0.8rem" }}>
-              In this paper
-            </div>
-            {facets.loading && !facets.data ? (
-              <SkeletonList rows={3} h="1.6rem" />
-            ) : (
-              <div className="col">
-                {(
-                  [
-                    ["tasks", "task", "Tasks"],
-                    ["methods", "method", "Methods"],
-                    ["datasets", "dataset", "Datasets"],
-                    ["metrics", "metric", "Metrics"],
-                  ] as const
-                ).map(([key, kind, label]) => {
-                  const list = facets.data?.[key] || [];
-                  if (!list.length) return null;
-                  return (
-                    <div key={key}>
-                      <div className="label" style={{ marginBottom: "0.35rem" }}>
-                        {label}
-                      </div>
-                      <div className="chips">
-                        {list.map((item) => (
-                          <Link key={item.slug} className={`chip ${kind}`} to={`/papers?${kind}=${encodeURIComponent(item.slug)}`} title={`Find papers with ${item.name}`}>
-                            {item.name}
-                          </Link>
-                        ))}
-                      </div>
-                    </div>
-                  );
-                })}
-                {facets.data && !Object.values(facets.data).some((list) => Array.isArray(list) && list.length) && <p className="muted small">No extracted concepts for this paper.</p>}
-              </div>
-            )}
-          </div>
-        </aside>
+          </aside>
+        )}
       </div>
+    </div>
+  );
+}
+
+function NeighborPeek({ items, label }: { items?: Neighbor[]; label: string }) {
+  const list = (items || []).slice(0, 3);
+  return (
+    <div className="peek">
+      <div className="label">{label}</div>
+      {list.length ? (
+        <div className="col gap-sm">
+          {list.map((item) => (
+            <Link key={item.arxiv_id} className="peek-link" to={`/papers/${item.arxiv_id}`}>
+              {item.title || item.arxiv_id}
+            </Link>
+          ))}
+        </div>
+      ) : (
+        <p className="muted small">None in this corpus yet.</p>
+      )}
     </div>
   );
 }

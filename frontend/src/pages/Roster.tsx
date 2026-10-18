@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { api, errorText, post, type Invite, type Student } from "../api";
+import { api, errorText, post, type Invite, type OrgInfo, type Student } from "../api";
 import { useAuth } from "../auth";
 import { Contours, Empty, ErrorNote, Icon, PageHead, SkeletonList, initials } from "../ui";
 import { copyText, useFetch, useToast, useToken } from "../hooks";
@@ -12,7 +12,26 @@ export function Roster() {
   const org = user?.org_id || "";
   const invite = useFetch<Invite>(org ? `/orgs/${org}/invite` : null);
   const students = useFetch<Student[]>(org ? `/orgs/${org}/students` : null);
+  const info = useFetch<OrgInfo>(org ? `/orgs/${org}` : null);
   const [busy, setBusy] = useState("");
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState("");
+
+  async function saveName(event: React.FormEvent) {
+    event.preventDefault();
+    if (!draft.trim()) return;
+    setBusy("name");
+    try {
+      await api(`/orgs/${org}`, token, { method: "PATCH", body: JSON.stringify({ name: draft }) });
+      notify("Team renamed");
+      setEditing(false);
+      info.reload();
+    } catch (err) {
+      notify(errorText(err), "error");
+    } finally {
+      setBusy("");
+    }
+  }
 
   const code = invite.data;
   const link = code ? `${window.location.origin}${code.join_path}` : "";
@@ -65,6 +84,39 @@ export function Roster() {
   return (
     <div className="page">
       <PageHead eyebrow="Class" title="Your students" sub="Share the class code or link. Each student who joins gives you a read-only summary of their research progress." />
+
+      <div className="team-name">
+        {editing ? (
+          <form className="row" onSubmit={saveName}>
+            <input className="input" value={draft} maxLength={60} autoFocus onChange={(event) => setDraft(event.target.value)} aria-label="Team name" />
+            <button className="btn sm" type="submit" disabled={busy === "name" || !draft.trim()}>
+              Save
+            </button>
+            <button className="btn ghost sm" type="button" onClick={() => setEditing(false)}>
+              Cancel
+            </button>
+          </form>
+        ) : (
+          <>
+            <Icon name="users" />
+            <strong>{info.data?.name || "Your team"}</strong>
+            <span className="small muted">
+              {info.data ? `${info.data.members} ${info.data.members === 1 ? "member" : "members"}` : ""}
+            </span>
+            <button
+              className="btn ghost sm"
+              type="button"
+              disabled={!info.data}
+              onClick={() => {
+                setDraft(info.data?.name || "");
+                setEditing(true);
+              }}
+            >
+              Rename
+            </button>
+          </>
+        )}
+      </div>
 
       <div className="code-card">
         <Contours />

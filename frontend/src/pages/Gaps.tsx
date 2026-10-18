@@ -48,8 +48,8 @@ export function Gaps() {
     <div className="page">
       <PageHead
         eyebrow="Research gaps"
-        title="Gaps"
-        sub="A gap is a corner of the paper graph where nothing has been tried. Each one earns its way from candidate to adopted, or gets killed on evidence."
+        title="Open questions"
+        sub="A gap is something the papers you read have not answered yet, so it could be worth working on. Track each one from idea to adopted, or drop it when the evidence says no."
         actions={
           <>
             <button className="btn ghost" type="button" onClick={() => chat.ask("Find gaps around my reading")}>
@@ -156,8 +156,8 @@ function ProposeForm({ onDone, onCancel }: { onDone: () => void; onCancel: () =>
     if (!text.trim()) return;
     setBusy(true);
     try {
-      const created = await post<{ id?: string }>("/students/me/gaps", token, { text: text.trim(), task_id: "" });
-      notify("Gap added as a candidate");
+      const created = await post<{ id?: string; status?: string }>("/students/me/gaps", token, { text: text.trim(), task_id: "" });
+      notify(created.status && created.status !== "candidate" ? `Gap added and reviewed: ${created.status}` : "Gap added as a candidate");
       onDone();
       if (created.id) navigate(`/gaps/${created.id}`);
     } catch (err) {
@@ -175,7 +175,7 @@ function ProposeForm({ onDone, onCancel }: { onDone: () => void; onCancel: () =>
       </div>
       <div className="row">
         <button className="btn" type="submit" disabled={busy || !text.trim()}>
-          {busy ? "Adding..." : "Add as candidate"}
+          {busy ? "Reviewing..." : "Add and review"}
         </button>
         <button className="btn ghost" type="button" onClick={onCancel}>
           Cancel
@@ -184,6 +184,15 @@ function ProposeForm({ onDone, onCancel }: { onDone: () => void; onCancel: () =>
     </form>
   );
 }
+
+const CHECK_LABEL: Record<string, string> = {
+  occupancy: "Is the pairing already published?",
+  prior_art: "Does a paper name the method in its title?",
+  adjacency: "How close is the nearest work?",
+  later_work: "Did later papers revisit it?",
+  scope: "Scope",
+  idea_review: "Has this idea already been published?",
+};
 
 function Detail({ id, onChange, plan }: { id: string; onChange: () => void; plan: string }) {
   const token = useToken();
@@ -274,6 +283,49 @@ function Detail({ id, onChange, plan }: { id: string; onChange: () => void; plan
               );
             })}
           </div>
+        )}
+      </div>
+
+      <div className="card">
+        <div className="card-head">
+          <span className="card-title row">
+            <Icon name="shield" />
+            Adversary review
+          </span>
+          {(data.status === "candidate" || data.status === "challenged") && count >= 2 && (
+            <button
+              className="btn ghost sm"
+              type="button"
+              disabled={Boolean(busy)}
+              onClick={() =>
+                act(
+                  "challenge",
+                  async () => {
+                    await post(`/students/me/gaps/${id}/challenge`, token, {});
+                    await new Promise((resolve) => setTimeout(resolve, 2500));
+                  },
+                  "Check started",
+                )
+              }
+            >
+              {busy === "challenge" ? "Checking..." : "Run the checks"}
+            </button>
+          )}
+        </div>
+        {(data.checks || []).length ? (
+          <ol className="checks">
+            {(data.checks || []).map((check, index) => (
+              <li key={index} className={check.result}>
+                <span className="check-dot" />
+                <div>
+                  <strong>{CHECK_LABEL[check.name] || check.name}</strong>
+                  <p className="small muted">{check.reason}</p>
+                </div>
+              </li>
+            ))}
+          </ol>
+        ) : (
+          <p className="muted small">Not checked yet. The adversary tries to disprove each gap by looking for papers that already do it. Gaps found by the assistant are checked automatically.</p>
         )}
       </div>
 

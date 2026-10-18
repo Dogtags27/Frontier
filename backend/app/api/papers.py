@@ -93,7 +93,7 @@ async def facets(
 async def sentences(
     arxiv_id: str,
     n: int | None = None,
-    limit: int = Query(10, ge=1, le=30),
+    limit: int = Query(10, ge=1, le=80),
     offset: int = Query(0, ge=0),
     principal: Principal = Depends(limited(READ)),
     store: Container = Depends(container),
@@ -117,6 +117,15 @@ async def pdf(
     store: Container = Depends(container),
 ):
     return await store.papers.pdf(arxiv_id)
+
+
+@router.get("/papers/{arxiv_id}/article")
+async def article(
+    arxiv_id: str,
+    principal: Principal = Depends(limited(READ)),
+    store: Container = Depends(container),
+):
+    return await store.papers.article(arxiv_id)
 
 
 @router.get("/papers/{arxiv_id}/pdf/file")

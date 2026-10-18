@@ -34,6 +34,10 @@ class JoinBody(BaseModel):
     code: str
 
 
+class OrgNameBody(BaseModel):
+    name: str
+
+
 class ReadBody(BaseModel):
     paper_id: str
     depth: Literal["skimmed", "read", "understood"] = "read"

@@ -49,6 +49,11 @@ class GapService:
         gap = _gap(rows[0])
         refs = await handle.query(Q.GAP_REFS, {"id": gap_id})
         gap["refs"] = [{"kind": _text(row[0]), "ref_id": _text(row[1])} for row in refs]
+        attempts = await handle.query(Q.GAP_ATTEMPTS, {"id": gap_id})
+        gap["checks"] = [
+            {"result": _text(row[0]), "reason": _text(row[1]), "name": _text(row[2]), "at": _text(row[3])}
+            for row in attempts
+        ]
         return gap
 
     async def transition(self, handle, gap_id: str, to_status: str, version: int) -> dict:

@@ -3,7 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { errorText, post, type Job, type Progress } from "../api";
 import { useAuth } from "../auth";
 import { useChat } from "../chat";
-import { useFetch, useToast, useToken } from "../hooks";
+import { dataChanged, useFetch, useToast, useToken } from "../hooks";
 import { GapRow, Timeline } from "../parts";
 import { Badge, Contours, Empty, ErrorNote, GapBar, Icon, SkeletonList, Stat, ago, titleCase } from "../ui";
 
@@ -24,7 +24,6 @@ export function Desk() {
   const navigate = useNavigate();
   const chat = useChat();
   const progress = useFetch<Progress>("/students/me/progress");
-  const brief = useFetch<{ text: string }>("/students/me/brief");
   const jobs = useFetch<{ items: Job[] }>("/students/me/jobs");
   const [query, setQuery] = useState("");
   const [marking, setMarking] = useState("");
@@ -49,8 +48,7 @@ export function Desk() {
     try {
       await post("/students/me/reads", token, { paper_id: paperId, depth: "read", note: "" });
       notify("Marked as read");
-      progress.reload();
-      brief.reload();
+      dataChanged();
     } catch (err) {
       notify(errorText(err), "error");
     } finally {
@@ -63,17 +61,12 @@ export function Desk() {
       <section className="hero">
         <Contours />
         <p className="eyebrow" style={{ color: "var(--accent)", position: "relative" }}>
-          Your desk
+          Home
         </p>
         <h1 style={{ position: "relative" }}>
           {greeting()}
           {first ? `, ${first}` : ""}.
         </h1>
-        <p style={{ position: "relative" }}>
-          {brief.data?.text && brief.data.text !== "Nothing recorded yet."
-            ? brief.data.text
-            : "Ask the assistant a topic. It will hand you a path, then the holes in it."}
-        </p>
         <form className="hero-actions" onSubmit={go}>
           <div className="input-wrap grow" style={{ minWidth: "16rem" }}>
             <Icon name="search" />
@@ -97,7 +90,7 @@ export function Desk() {
         ) : (
           <>
             <Stat icon="book" label="Papers read" value={data?.graph.reads ?? 0} tone="var(--brand-soft)" />
-            <Stat icon="flag" label="Open gaps" value={open} note={`${data?.graph.gaps ?? 0} ever opened`} tone="var(--accent-soft)" />
+            <Stat icon="flag" label="Open questions" value={open} note={`${data?.graph.gaps ?? 0} ever opened`} tone="var(--accent-soft)" />
             <Stat icon="check" label="Decisions" value={data?.graph.decisions ?? 0} tone="var(--adopted-soft)" />
             <Stat icon="layers" label="Concepts known" value={data?.graph.concepts ?? 0} tone="var(--candidate-soft)" />
           </>
@@ -108,8 +101,8 @@ export function Desk() {
         <div className="mt-lg">
           <Empty
             icon="compass"
-            title="Your desk is empty"
-            text="Start by mapping a topic. The cartographer builds a reading path from the citation graph, and gaps follow as you read."
+            title="Nothing here yet"
+            text="Pick a topic and we will build a reading path for it. As you read, open questions the papers leave unanswered show up here."
             action={
               <div className="row wrap" style={{ justifyContent: "center" }}>
                 <Link className="btn" to="/field">

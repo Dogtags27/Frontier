@@ -1,4 +1,4 @@
-"""Work queue, leases, handoffs, and gap versions. No OpenAI calls."""
+﻿"""Work queue, leases, handoffs, and gap versions. No OpenAI calls."""
 
 import asyncio
 import time
@@ -230,7 +230,9 @@ def test_two_writers_one_gap_and_jobs_stay_on_that_graph():
             )
             assert opened.status_code == 200, opened.text
             gap_id = opened.json()["id"]
-            body = {"to": "challenged", "version": 1}
+            reviewed = client.get(f"/students/{student}/gaps/{gap_id}", headers=headers).json()
+            start = int(reviewed["version"])
+            body = {"to": "adopted", "version": start}
             first, second = asyncio.run(
                 _both(
                     client,
@@ -242,10 +244,10 @@ def test_two_writers_one_gap_and_jobs_stay_on_that_graph():
             codes = sorted([first.status_code, second.status_code])
             assert codes == [200, 409]
             lost = second if second.status_code == 409 else first
-            assert lost.json()["detail"] == "challenged:2"
+            assert lost.json()["detail"] == f"adopted:{start + 1}"
             current = client.get(f"/students/{student}/gaps/{gap_id}", headers=headers)
-            assert current.json()["version"] == 2
-            assert current.json()["status"] == "challenged"
+            assert current.json()["version"] == start + 1
+            assert current.json()["status"] == "adopted"
 
             queued = client.post(
                 f"/students/{student}/jobs",
@@ -260,7 +262,7 @@ def test_two_writers_one_gap_and_jobs_stay_on_that_graph():
             assert hidden.status_code == 404
             illegal = client.post(
                 f"/students/{student}/gaps/{gap_id}/transition",
-                json={"to": "adopted", "version": 2},
+                json={"to": "challenged", "version": start + 1},
                 headers=headers,
             )
             assert illegal.status_code == 400

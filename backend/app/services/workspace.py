@@ -133,12 +133,23 @@ class WorkspaceResolver:
     async def profile(self, handle: GraphHandle) -> dict:
         """Display fields for the student profile. Research text stays on the graph."""
         body = await self.progress(handle)
-        tasks = await handle.query(Q.KNOWN_TASKS)
+        known = [_text(row[0]) for row in await handle.query(Q.KNOWN_TASKS) if _text(row[0])]
+        read_ids = [_text(row[0]) for row in await handle.query(Q.READ_IDS) if row[0]]
         days = await handle.query(Q.READ_DAYS)
         interest = await handle.query(Q.INTEREST_LINE)
+        from_reads = await self.graph.tasks_for(read_ids)
+        names = await self.graph.task_names(known)
+        topics: list[str] = []
+        for _slug, name, _count in from_reads:
+            if name and name not in topics:
+                topics.append(name)
+        for slug in known:
+            label = names.get(slug) or slug
+            if label not in topics:
+                topics.append(label)
         return {
             "reads_by_day": _day_counts(days),
-            "tasks": [_text(row[0]) for row in tasks if _text(row[0])],
+            "tasks": topics[:30],
             "gaps": body["gaps"],
             "reading": body["reading"],
             "graph": body["graph"],

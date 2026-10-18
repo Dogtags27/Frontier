@@ -145,11 +145,13 @@ class Q:
     )
     CITES_OUT = (
         "MATCH (:Paper {arxiv_id: $id})-[:CITES]->(b:Paper) "
-        "RETURN b.arxiv_id, b.title, b.year ORDER BY b.year DESC LIMIT 20"
+        "RETURN b.arxiv_id, b.title, b.year ORDER BY b.year DESC LIMIT 60"
     )
+    CITES_OUT_COUNT = "MATCH (:Paper {arxiv_id: $id})-[:CITES]->(b:Paper) RETURN count(b)"
+    CITES_IN_COUNT = "MATCH (a:Paper)-[:CITES]->(:Paper {arxiv_id: $id}) RETURN count(a)"
     CITES_IN = (
         "MATCH (a:Paper)-[:CITES]->(:Paper {arxiv_id: $id}) "
-        "RETURN a.arxiv_id, a.title, a.year ORDER BY a.year DESC LIMIT 20"
+        "RETURN a.arxiv_id, a.title, a.year ORDER BY a.year DESC LIMIT 60"
     )
     PAPER_MARKS = "MATCH (r:Ref {kind: 'paper'}) RETURN r.ref_id, coalesce(r.state, 'read')"
     RECORD_READ = (
@@ -525,7 +527,27 @@ class Q:
     )
     GAP_ATTEMPTS = (
         "MATCH (a:Attempt)-[:AGAINST]->(:Gap {id: $id}) "
-        "RETURN a.result, a.reason ORDER BY a.at"
+        "RETURN a.result, a.reason, a.query, a.at ORDER BY a.at"
+    )
+    TITLE_PRIOR = (
+        "MATCH (p:Paper)-[:ADDRESSES]->(:Task {slug: $task}) "
+        "WHERE coalesce(p.paper_kind, '') <> 'survey_like' AND toLower(p.title) CONTAINS $needle "
+        "RETURN p.arxiv_id, p.title, p.year ORDER BY p.year DESC LIMIT 3"
+    )
+    CELL_STATS = (
+        "MATCH (t:Task {slug: $task}) "
+        "OPTIONAL MATCH (p:Paper)-[:ADDRESSES]->(t) WHERE coalesce(p.paper_kind, '') <> 'survey_like' "
+        "WITH count(DISTINCT p) AS on_task "
+        "OPTIONAL MATCH (q:Paper)-[:USES_METHOD]->(:Method {family: $family}) "
+        "WHERE coalesce(q.paper_kind, '') <> 'survey_like' "
+        "RETURN on_task, count(DISTINCT q)"
+    )
+    ALL_GAPS = (
+        "MATCH (g:Gap) "
+        "OPTIONAL MATCH (g)-[e:EVIDENCED_BY]->() "
+        "RETURN g.id, g.status, coalesce(g.score, 0), coalesce(g.task_id, ''), "
+        "coalesce(g.text, ''), count(e), coalesce(g.at, '') AS at "
+        "ORDER BY at DESC LIMIT 40"
     )
     CITED_BY_PAPER = (
         "MATCH (:Paper {arxiv_id: $id})-[:CITES]->(b:Paper) "
@@ -541,8 +563,10 @@ class Q:
         "MATCH (p:Paper)-[:ADDRESSES]->(t:Task) "
         "WHERE t.slug IN $tasks AND coalesce(p.paper_kind, '') <> 'survey_like' "
         "AND NOT p.arxiv_id IN $skip "
-        "RETURN DISTINCT p.arxiv_id, p.title, p.year "
-        "ORDER BY p.year LIMIT 8"
+        "WITH DISTINCT p "
+        "OPTIONAL MATCH (p)<-[c:CITES]-(:Paper) "
+        "RETURN p.arxiv_id, p.title, p.year, count(c) AS n "
+        "ORDER BY n DESC, p.year LIMIT 8"
     )
     CLEAR_PATH = (
         "MERGE (path:ReadingPath {id: 'current'}) "
@@ -579,6 +603,11 @@ class Q:
         "WHERE ref.kind IN ['task', 'concept'] "
         "RETURN DISTINCT ref.ref_id"
     )
+    TASKS_OF_PAPERS = (
+        "MATCH (p:Paper)-[:ADDRESSES]->(t:Task) WHERE p.arxiv_id IN $ids "
+        "RETURN t.slug, t.name, count(DISTINCT p) AS n ORDER BY n DESC, t.name LIMIT 30"
+    )
+    TASK_NAMES = "MATCH (t:Task) WHERE t.slug IN $slugs RETURN t.slug, t.name"
     READ_DAYS = "MATCH (r:ReadEvent) RETURN r.at"
     INTEREST_LINE = (
         "MATCH (m:Memory {kind: 'interest'}) WHERE m.valid_to IS NULL "
@@ -592,7 +621,7 @@ class Q:
         "MATCH (:Paper {arxiv_id: $id})-[:CITES]->(cited:Paper) "
         "OPTIONAL MATCH (cited)-[:CITES]->(origin:Paper) "
         "RETURN cited.arxiv_id, cited.title, coalesce(origin.arxiv_id, ''), coalesce(origin.title, '') "
-        "LIMIT 40"
+        "LIMIT 300"
     )
     STRIP = (
         "MATCH (later:Paper)-[:CITES]->(:Paper {arxiv_id: $id}) "
@@ -604,7 +633,8 @@ class Q:
     FINDING_COUNT = "MATCH (f:Finding) RETURN count(f)"
     STUDENT_WRITES = "MATCH (n) WHERE n:Finding OR n:ReadingPath OR n:Memory RETURN count(n)"
     SAVE_FINDING = (
-        "CREATE (f:Finding {id: $id, at: $at, kind: $kind, paper_id: $paper, summary: $summary, origin: $origin}) "
+        "MERGE (f:Finding {id: $id}) "
+        "SET f.at = $at, f.kind = $kind, f.paper_id = $paper, f.summary = $summary, f.origin = $origin "
         "RETURN f.id"
     )
     SHORTEST_CITES = (
@@ -854,6 +884,19 @@ class SQL:
         "WHERE e.org_id = %s AND e.supervisor_id = %s AND e.status = 'active' "
         "ORDER BY u.display_name"
     )
+    MY_ORGS = (
+        "SELECT o.id, o.name, s.display_name, e.created_at, "
+        "(SELECT count(*) FROM enrollments x WHERE x.org_id = o.id AND x.status = 'active') "
+        "FROM enrollments e JOIN orgs o ON o.id = e.org_id JOIN users s ON s.id = e.supervisor_id "
+        "WHERE e.student_id = %s AND e.status = 'active' ORDER BY e.created_at DESC"
+    )
+    LEAVE_ORG = "UPDATE enrollments SET status = 'removed' WHERE org_id = %s AND student_id = %s AND status = 'active'"
+    RESET_ORG = (
+        "UPDATE users SET org_id = (SELECT org_id FROM enrollments WHERE student_id = %s AND status = 'active' "
+        "ORDER BY created_at DESC LIMIT 1) WHERE id = %s AND signup_role = 'student'"
+    )
+    RENAME_ORG = "UPDATE orgs SET name = %s WHERE id = %s"
+    ORG_MEMBER_COUNT = "SELECT count(*) FROM enrollments WHERE org_id = %s AND status = 'active'"
     TEST_USERS = "SELECT id, graph_name FROM users WHERE email LIKE %s"
     INSERT_USAGE = (
         "INSERT INTO llm_usage (id, user_id, org_id, kind, model, input_tokens, output_tokens, usd, cached) "

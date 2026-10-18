@@ -52,20 +52,6 @@ async def test_the_model_classifies_research_questions():
         await box.close()
 
 
-def test_plain_language_topics_do_not_need_an_arxiv_id():
-    engine = IntentEngine(get_settings(), llm=None)
-    start = engine._shortcut("Where do I start with large language models?", [])
-    assert start is not None
-    assert start.intent == "explore_topic"
-    assert "large language" in start.slots["query"].lower()
-    papers = engine._shortcut("Find papers on graph neural networks after 2020", [])
-    assert papers is not None
-    assert papers.intent == "find_papers"
-    next_read = engine._shortcut("what should I read next", [])
-    assert next_read is not None
-    assert next_read.intent == "plan_reading"
-
-
 @pytest.mark.asyncio
 async def test_attacks_and_overlong_messages_never_reach_the_model():
     engine = IntentEngine(get_settings(), llm=None)

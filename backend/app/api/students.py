@@ -22,6 +22,8 @@ from app.models.schemas import (
     TransitionBody,
     TurnBody,
 )
+from app.agents.adversary import review_text_gap
+from app.models.queries import Q
 from app.services.chat import ChatService
 from app.services.intent import word_count
 from app.utilities.security import Principal
@@ -134,8 +136,14 @@ async def open_gap(
     principal: Principal = Depends(limited(WRITE)),
     store: Container = Depends(container),
 ):
-    handle = await _self(student_id, principal, store)
-    return await store.memory.open_gap(handle, body.text.strip(), body.task_id.strip())
+    handle = await _ready(student_id, principal, store)
+    created = await store.memory.open_gap(handle, body.text.strip(), body.task_id.strip())
+    try:
+        ctx = ChatService(store)._ctx(principal)
+        reviewed = await review_text_gap(ctx, created["id"])
+    except Exception:
+        return created
+    return {**created, "status": reviewed["status"], "review": reviewed["summary"]}
 
 
 @router.get("/students/{student_id}/gaps/{gap_id}")
@@ -159,6 +167,23 @@ async def transition_gap(
 ):
     handle = await _ready(student_id, principal, store)
     return await store.gaps.transition(handle, gap_id, body.to, body.version)
+
+
+@router.post("/students/{student_id}/gaps/{gap_id}/challenge", status_code=202)
+async def challenge_gap(
+    student_id: str,
+    gap_id: str,
+    principal: Principal = Depends(limited(WRITE)),
+    store: Container = Depends(container),
+):
+    handle = await _ready(student_id, principal, store)
+    rows = await handle.query(Q.GAP_SIGNAL, {"id": gap_id})
+    if rows and not rows[0][4]:
+        reviewed = await review_text_gap(ChatService(store)._ctx(principal), gap_id)
+        return {"handoff": None, "job_id": "", "status": reviewed["status"], "review": reviewed["summary"]}
+    created = await store.gaps.open_handoff(handle, gap_id, "adversary", "student")
+    job = await store.queue.enqueue(handle.name, "challenge_gap", {"gap_id": gap_id, "handoff_id": created["id"]})
+    return {"handoff": created, "job_id": job["id"]}
 
 
 @router.post("/students/{student_id}/gaps/{gap_id}/evidence")

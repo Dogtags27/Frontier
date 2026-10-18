@@ -41,8 +41,8 @@ export function Field() {
   return (
     <div className="page">
       <PageHead
-        eyebrow="Cartographer"
-        title="Map the field"
+        eyebrow="Where to start"
+        title="Reading paths"
         sub="Pick a seed paper and the cartographer walks the citation graph outward, skips what you have already read, and orders what is left."
       />
 

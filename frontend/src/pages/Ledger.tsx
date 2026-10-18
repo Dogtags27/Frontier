@@ -67,7 +67,7 @@ export function Ledger() {
 
       <div className="stats">
         <Stat icon="book" label="Papers read" value={data?.graph.reads ?? "-"} tone="var(--brand-soft)" />
-        <Stat icon="flag" label="Open gaps" value={data ? open : "-"} note={data ? `${data.graph.gaps} ever opened` : undefined} tone="var(--accent-soft)" />
+        <Stat icon="flag" label="Open questions" value={data ? open : "-"} note={data ? `${data.graph.gaps} ever opened` : undefined} tone="var(--accent-soft)" />
         <Stat icon="check" label="Decisions" value={data?.graph.decisions ?? "-"} tone="var(--adopted-soft)" />
         <Stat icon="layers" label="Concepts known" value={data?.graph.concepts ?? "-"} tone="var(--candidate-soft)" />
       </div>

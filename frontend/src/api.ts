@@ -36,9 +36,9 @@ export type Paper = PaperHit & { abstract?: string; categories?: string[]; layer
 export type Facet = { slug: string; name: string };
 export type Facets = { tasks: Facet[]; methods: Facet[]; datasets: Facet[]; metrics: Facet[] };
 export type Neighbor = { arxiv_id: string; title: string; year: number };
-export type Neighbors = { cites: Neighbor[]; cited_by: Neighbor[] };
+export type Neighbors = { cites: Neighbor[]; cited_by: Neighbor[]; cites_total?: number; cited_by_total?: number };
 export type Mark = { start: number; end: number; kind: string; ref_id: string; title: string };
-export type Evidence = { ref_type?: string; ref_id?: string; title?: string };
+export type Evidence = { ref_type?: string; ref_id?: string; title?: string; status?: string };
 export type TraceStep = { tool?: string; args?: Record<string, unknown>; result_summary?: string };
 
 export type Progress = {
@@ -57,7 +57,8 @@ export type Progress = {
 };
 
 export type GapItem = { id: string; status: GapStatus; version: number; score: number | null; task_id: string; text: string; at: string };
-export type GapDetail = GapItem & { evidence?: number; refs?: { kind: string; ref_id: string }[] };
+export type GapCheck = { name: string; result: string; reason: string; at: string };
+export type GapDetail = GapItem & { evidence?: number; refs?: { kind: string; ref_id: string }[]; checks?: GapCheck[] };
 
 export type Profile = {
   reads_by_day: { day: string; count: number }[];
@@ -69,9 +70,11 @@ export type Profile = {
 };
 
 export type Invite = { code: string; join_path: string; expires_at: string; max_uses: number; used: number };
+export type Org = { id: string; name: string; supervisor: string; joined_at: string; members: number };
+export type OrgInfo = { id: string; name: string; members: number };
 export type Student = { id: string; display_name: string };
 export type MemoryItem = { id: string; kind: string; text: string; entity: string; valid_from: string };
-export type Job = { id: string; type: string; status: string; result: { text?: string; summary?: string } | null; error: string; created: number; finished: number };
+export type Job = { id: string; type: string; status: string; result: { text?: string; summary?: string; evidence?: Evidence[]; caveats?: string[]; trace?: TraceStep[] } | null; error: string; created: number; finished: number };
 export type Conversation = { id: string; at: string; title: string; turns: number };
 export type Turn = { id: string; at: string; role: string; text: string; evidence?: Evidence[]; intent?: string };
 

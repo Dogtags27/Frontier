@@ -60,6 +60,21 @@ class GraphStore:
         rows = await self.run(self._corpus, Q.PAPERS_BY_IDS, {"ids": wanted}, ro=True)
         return {_text(row[0]): _text(row[1]) for row in rows}
 
+    async def tasks_for(self, arxiv_ids: list[str]) -> list[tuple[str, str, int]]:
+        """Tasks addressed by these papers, most-read first. slug, name, paper count."""
+        wanted = [arxiv_id for arxiv_id in dict.fromkeys(arxiv_ids) if arxiv_id]
+        if not wanted:
+            return []
+        rows = await self.run(self._corpus, Q.TASKS_OF_PAPERS, {"ids": wanted}, ro=True)
+        return [(_text(row[0]), _text(row[1]), int(row[2] or 0)) for row in rows]
+
+    async def task_names(self, slugs: list[str]) -> dict[str, str]:
+        wanted = [slug for slug in dict.fromkeys(slugs) if slug]
+        if not wanted:
+            return {}
+        rows = await self.run(self._corpus, Q.TASK_NAMES, {"slugs": wanted}, ro=True)
+        return {_text(row[0]): _text(row[1]) for row in rows}
+
     async def ensure_workspace(self, name: str) -> None:
         """Constraints on one private graph. Re-running is a no-op. The corpus is never selected."""
         if not name.startswith("frontier_ws_"):

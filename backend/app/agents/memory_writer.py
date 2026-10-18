@@ -13,7 +13,7 @@ class MemoryWriter(Agent):
         paper_id = str(payload.get("paper_id") or "")
         if not text:
             return answer("Nothing new to remember.", [], ctx.trace)
-        kind = "belief" if any(word in text.lower() for word in ("limit", "think", "because")) else "interest"
+        kind = str(payload.get("kind") or "interest")
         saved = await ctx.memory.remember(ctx.workspace, kind, text[:500], paper_id or "note")
         ctx.trace.step("remember", {"kind": kind, "paper_id": paper_id}, "memory updated" if not saved.get("duplicate") else "already remembered")
         return answer("I kept that in your research memory.", [], ctx.trace) | {"id": saved["id"], "duplicate": saved["duplicate"]}

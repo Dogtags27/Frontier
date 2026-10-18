@@ -26,8 +26,7 @@ export function App() {
   const supervisor = (node: ReactNode) => <Only role="supervisor">{node}</Only>;
   return (
     <Routes>
-      <Route path="/signin" element={<SignIn />} />
-      <Route path="/join/:code" element={<Join />} />
+      <Route path="/signin" element={<SignIn />} />      <Route path="/join/:code" element={<Join />} />
       <Route element={<Shell />}>
         <Route path="/" element={student(<Desk />)} />
         <Route path="/field" element={student(<Field />)} />

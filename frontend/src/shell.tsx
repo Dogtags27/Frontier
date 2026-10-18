@@ -1,13 +1,14 @@
 import { NavLink, Navigate, Outlet } from "react-router-dom";
 import { useAuth } from "./auth";
 import { ChatDock, useChat } from "./chat";
+import { Tour, startTour } from "./tour";
 import { BrandMark, Icon, initials } from "./ui";
 
 const STUDENT_MAIN = [
-  { to: "/", label: "Desk", icon: "home" },
-  { to: "/field", label: "Field", icon: "map" },
-  { to: "/papers", label: "Papers", icon: "search" },
-  { to: "/gaps", label: "Gaps", icon: "flag" },
+  { to: "/", label: "Home", icon: "home", tour: "home" },
+  { to: "/field", label: "Reading paths", icon: "map", tour: "paths" },
+  { to: "/papers", label: "Find papers", icon: "search", tour: "papers" },
+  { to: "/gaps", label: "Open questions", icon: "flag", tour: "gaps" },
 ];
 
 const STUDENT_YOU = [
@@ -17,13 +18,13 @@ const STUDENT_YOU = [
 
 const SUPERVISOR = [
   { to: "/roster", label: "Class", icon: "users" },
-  { to: "/papers", label: "Papers", icon: "search" },
+  { to: "/papers", label: "Find papers", icon: "search" },
   { to: "/privacy", label: "Privacy", icon: "shield" },
 ];
 
-function Item({ to, label, icon }: { to: string; label: string; icon: string }) {
+function Item({ to, label, icon, tour }: { to: string; label: string; icon: string; tour?: string }) {
   return (
-    <NavLink to={to} end={to === "/" || to === "/roster"} className={({ isActive }) => `nav-link ${isActive ? "active" : ""}`}>
+    <NavLink to={to} data-tour={tour} end={to === "/" || to === "/roster"} className={({ isActive }) => `nav-link ${isActive ? "active" : ""}`}>
       <Icon name={icon} />
       {label}
     </NavLink>
@@ -51,7 +52,7 @@ function Frame({ supervisor }: { supervisor: boolean }) {
           <BrandMark />
           <span>
             <span className="brand-name">Frontier</span>
-            <span className="brand-tag">Research desk</span>
+            <span className="brand-tag">Reading companion</span>
           </span>
         </NavLink>
         {supervisor ? (
@@ -71,13 +72,19 @@ function Frame({ supervisor }: { supervisor: boolean }) {
             {STUDENT_YOU.map((item) => (
               <Item key={item.to} {...item} />
             ))}
-            <button className={`nav-link ${chat.open ? "active" : ""}`} type="button" onClick={() => chat.setOpen(!chat.open)}>
+            <button className={`nav-link ${chat.open ? "active" : ""}`} data-tour="assistant" type="button" onClick={() => chat.setOpen(!chat.open)}>
               <Icon name="chat" />
               Assistant
             </button>
           </>
         )}
         <div className="sidebar-foot">
+          {!supervisor && (
+            <button className="nav-link" type="button" onClick={() => startTour()}>
+              <Icon name="compass" />
+              Take the tour
+            </button>
+          )}
           <div className="me">
             <span className="avatar">{initials(name)}</span>
             <div style={{ minWidth: 0 }}>
@@ -95,6 +102,7 @@ function Frame({ supervisor }: { supervisor: boolean }) {
         <Outlet />
       </main>
       {!supervisor && <ChatDock />}
+      {!supervisor && <Tour userId={user?.id || ""} />}
       {!supervisor && !chat.open && (
         <button className="fab" type="button" title="Open the assistant" onClick={() => chat.setOpen(true)}>
           <Icon name="spark" />

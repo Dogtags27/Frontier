@@ -60,31 +60,26 @@ class Reader(Agent):
             text = f"{left} and {right} both address " + ", ".join(shared[:4]) + "."
         return answer(text, [{"ref_type": "paper", "ref_id": paper, "title": ""} for paper in (left, right)], ctx.trace)
 
-    async def note(self, ctx, text: str) -> dict:
-        papers = PAPER_ID.findall(text)
-        depth = _depth(text)
-        paper_id = papers[0] if papers else ""
-        if paper_id:
+    async def note(self, ctx, text: str, papers: list[str] | None = None, depth: str | None = None, kind: str | None = None) -> dict:
+        """Save a reading, a note, or both. Papers and depth come from the caller when it knows them."""
+        ids = list(dict.fromkeys(papers if papers is not None else PAPER_ID.findall(text)))
+        depth = depth or _depth(text)
+        for paper_id in ids:
             await ctx.memory.read(ctx.workspace, paper_id, depth, text[:280])
-            tasks = await ctx.read_corpus(Q.PAPER_TASKS, {"id": paper_id})
-            for row in tasks:
-                await ctx.workspace.query(
-                    Q.MARK_KNOWS,
-                    {"student": "self", "kind": "task", "ref_id": as_text(row[0])},
-                )
-            await ctx.queue.enqueue(ctx.workspace.name, "map_field", {"paper_id": paper_id, "note": text[:300]})
-        await ctx.queue.enqueue(
-            ctx.workspace.name,
-            "summarize_turn",
-            {"text": text[:500], "paper_id": paper_id},
-        )
-        ctx.trace.step("ingest_note", {"paper_id": paper_id, "depth": depth}, "note saved and the reading path was queued")
-        if paper_id:
-            reply = f"I saved that as {depth} for {paper_id} and queued a new reading path."
+        if ids:
+            await ctx.queue.enqueue(ctx.workspace.name, "map_field", {"paper_id": ids[-1], "note": text[:300]})
+        if kind != "none":
+            payload = {"text": text[:500], "paper_id": ids[0] if ids else ""}
+            if kind:
+                payload["kind"] = kind
+            await ctx.queue.enqueue(ctx.workspace.name, "summarize_turn", payload)
+        ctx.trace.step("ingest_note", {"papers": ids, "depth": depth}, "note saved and the reading path was queued")
+        if ids:
+            listed = ", ".join(ids)
+            reply = f"I saved that as {depth} for {listed} and queued a new reading path."
         else:
             reply = "I saved that note and queued a memory update."
-        return answer(reply, [{"ref_type": "paper", "ref_id": paper_id, "title": ""}] if paper_id else [], ctx.trace)
-
+        return answer(reply, [{"ref_type": "paper", "ref_id": paper_id, "title": ""} for paper_id in ids], ctx.trace)
     async def _shared_tasks(self, ctx, left: str, right: str) -> list[str]:
         left_rows = await ctx.read_corpus(Q.PAPER_TASKS, {"id": left})
         right_rows = await ctx.read_corpus(Q.PAPER_TASKS, {"id": right})

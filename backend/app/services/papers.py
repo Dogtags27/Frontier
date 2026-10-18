@@ -5,6 +5,7 @@ import re
 
 from app.core import NotFound, Upstream
 from app.models.queries import Q, SQL
+from app.services.article import ArticleService
 
 ARXIV_ID = re.compile(r"^[A-Za-z0-9./_-]{3,40}$")
 
@@ -15,6 +16,12 @@ class PaperService:
         self.pg = pg
         self.blob = blob
         self.settings = settings
+        self.web = ArticleService()
+
+    async def article(self, arxiv_id: str) -> dict:
+        self._check(arxiv_id)
+        await self.get(arxiv_id)
+        return await self.web.article(arxiv_id)
 
     async def get(self, arxiv_id: str) -> dict:
         self._check(arxiv_id)
@@ -42,7 +49,7 @@ class PaperService:
             rows = await self.pg.fetch(SQL.SENTENCE_ONE, (arxiv_id, n))
             items = [{"n": row[0], "original": row[1] or ""} for row in rows]
             return {"arxiv_id": arxiv_id, "items": items}
-        limit = min(max(limit, 1), 30)
+        limit = min(max(limit, 1), 80)
         offset = max(offset, 0)
         rows = await self.pg.fetch(SQL.SENTENCE_PAGE, (arxiv_id, limit, offset))
         return {
@@ -71,8 +78,12 @@ class PaperService:
             raise NotFound("paper not found")
         cites = await self._rows(Q.CITES_OUT, {"id": arxiv_id})
         cited_by = await self._rows(Q.CITES_IN, {"id": arxiv_id})
+        out_total = await self._rows(Q.CITES_OUT_COUNT, {"id": arxiv_id})
+        in_total = await self._rows(Q.CITES_IN_COUNT, {"id": arxiv_id})
         return {
             "arxiv_id": arxiv_id,
+            "cites_total": int(out_total[0][0]) if out_total else len(cites),
+            "cited_by_total": int(in_total[0][0]) if in_total else len(cited_by),
             "cites": [_neighbor(row) for row in cites],
             "cited_by": [_neighbor(row) for row in cited_by],
         }

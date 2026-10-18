@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends
 from app.api.deps import auth_identity, container, limited
 from app.core import Container
 from app.constants import READ, WRITE
-from app.models.schemas import BootstrapBody, JoinBody
+from app.models.schemas import BootstrapBody, JoinBody, OrgNameBody
 from app.utilities.security import Identity, Principal
 
 router = APIRouter()
@@ -41,6 +41,40 @@ async def join(
     store: Container = Depends(container),
 ):
     return await store.orgs.join(principal, body.code)
+
+
+@router.get("/me/orgs")
+async def my_orgs(principal: Principal = Depends(limited(READ)), store: Container = Depends(container)):
+    return {"items": await store.orgs.mine(principal.user_id)}
+
+
+@router.delete("/me/orgs/{org_id}")
+async def leave_org(
+    org_id: str,
+    principal: Principal = Depends(limited(WRITE)),
+    store: Container = Depends(container),
+):
+    await store.orgs.leave(principal.user_id, org_id)
+    return {"left": org_id}
+
+
+@router.get("/orgs/{org_id}")
+async def org_info(
+    org_id: str,
+    principal: Principal = Depends(limited(READ)),
+    store: Container = Depends(container),
+):
+    return await store.orgs.info(org_id, principal.user_id)
+
+
+@router.patch("/orgs/{org_id}")
+async def rename_org(
+    org_id: str,
+    body: OrgNameBody,
+    principal: Principal = Depends(limited(WRITE)),
+    store: Container = Depends(container),
+):
+    return await store.orgs.rename(org_id, principal.user_id, body.name)
 
 
 @router.post("/orgs/{org_id}/invites")

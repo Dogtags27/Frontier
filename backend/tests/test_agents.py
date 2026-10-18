@@ -61,23 +61,20 @@ async def test_a_note_becomes_a_ranked_gap_and_a_verdict():
             {"paper_id": PAPER, "note": "I read 2211.05920. Labeling defect data is expensive."},
         )
         finished = await Worker(box).run_graph(name)
-        assert finished == 2
+        assert finished == 1
         found = await box.queue.get(name, job["id"])
         assert found["status"] == "done"
         assert found["result"]["caveats"]
         gaps = found["result"]["evidence"]
         assert gaps
-        scores = [item["score"] for item in gaps]
-        assert scores == sorted(scores, reverse=True)
         tools = [step["tool"] for step in found["result"]["trace"]]
-        assert "seed" in tools and "rank" in tools
+        assert "seed" in tools and "rank" in tools and "challenge" in tools
 
-        challenge = await box.queue.get(name, found["result"]["job_id"])
-        assert challenge["status"] == "done"
-        assert challenge["result"]["status"] in {"alive", "killed"}
-        judged = [step for step in challenge["result"]["trace"] if step["tool"] == "judge"]
+        verdicts = found["result"]["gaps"]
+        assert verdicts and all(item["status"] in {"alive", "killed", "candidate"} for item in verdicts)
+        judged = [step for step in found["result"]["trace"] if step["tool"] == "judge"]
         assert judged and judged[0]["result_summary"]
-        attempts = await box.graph.run(name, Q.GAP_ATTEMPTS, {"id": challenge["result"]["gap_id"]})
+        attempts = await box.graph.run(name, Q.GAP_ATTEMPTS, {"id": verdicts[0]["id"]})
         assert attempts
 
         untouched = await box.graph.run(other, Q.COUNT_GAPS, ro=True)

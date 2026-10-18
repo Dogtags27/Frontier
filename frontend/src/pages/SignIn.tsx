@@ -100,9 +100,9 @@ export function SignIn() {
         </div>
         <div style={{ position: "relative" }}>
           <h2>
-            Find the hole in your field. <em>Then fill it.</em>
+            Stop searching papers. <em>Start connecting ideas.</em>
           </h2>
-          <p>A thousand papers, one map, and the gap nobody has published yet.</p>
+          <p>Find relevant research, trace the evidence, uncover promising gaps, and build a reading path that moves your work forward.</p>
         </div>
         <div className="auth-points">
           <div className="auth-point">
@@ -111,7 +111,7 @@ export function SignIn() {
           </div>
           <div className="auth-point">
             <Icon name="flag" />
-            <span>See the research that still has not been tried.</span>
+            <span>Trace every claim back to its evidence.</span>
           </div>
           <div className="auth-point">
             <Icon name="spark" />
@@ -124,7 +124,7 @@ export function SignIn() {
       <section className="auth-form-side">
         <form className="auth-card col gap-lg" onSubmit={submit}>
           <div>
-            <h1>{finishing ? "Finish setting up" : mode === "signin" ? "Welcome back" : "Create your desk"}</h1>
+            <h1>{finishing ? "Finish setting up" : mode === "signin" ? "Welcome back" : "Create your account"}</h1>
             <p className="muted mt" style={{ marginTop: "0.4rem" }}>
               {finishing
                 ? "Tell us how you will use Frontier to open your workspace."
@@ -184,7 +184,7 @@ export function SignIn() {
                       <Icon name="book" />
                       Student
                     </strong>
-                    <span>Read, find gaps, build your path</span>
+                    <span>Read papers, spot open questions, plan your path</span>
                   </button>
                   <button type="button" className={`role-card ${role === "supervisor" ? "on" : ""}`} onClick={() => setRole("supervisor")}>
                     <strong>

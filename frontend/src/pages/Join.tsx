@@ -36,10 +36,10 @@ export function Join() {
     }
     if (started.current) return;
     started.current = true;
-    post("/orgs/join", token, { code })
-      .then(() => {
+    post<{ name?: string }>("/orgs/join", token, { code })
+      .then((joined) => {
         sessionStorage.removeItem(JOIN_KEY);
-        notify("You joined the class. Your supervisor can now see your progress summary.");
+        notify(`You joined ${joined.name || "the team"}. Its instructor can now see your progress summary.`);
         navigate("/", { replace: true });
       })
       .catch((err) => {
@@ -67,7 +67,7 @@ export function Join() {
         </p>
         <Link className="btn" to="/">
           <Icon name="back" />
-          Back to my desk
+          Back to home
         </Link>
       </div>
     </div>

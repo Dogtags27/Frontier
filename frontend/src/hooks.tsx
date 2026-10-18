@@ -8,6 +8,14 @@ export function useToken() {
   return session?.access_token || "";
 }
 
+const changes = new EventTarget();
+
+export function dataChanged() {
+  changes.dispatchEvent(new Event("change"));
+}
+
+const LIVE = /^\/(students|me)\b/;
+
 export function useFetch<T>(path: string | null) {
   const token = useToken();
   const tokenRef = useRef(token);
@@ -15,6 +23,17 @@ export function useFetch<T>(path: string | null) {
   const has = Boolean(token);
   const [state, setState] = useState<{ data: T | null; error: string; loading: boolean }>({ data: null, error: "", loading: Boolean(path) });
   const [tick, setTick] = useState(0);
+  const quiet = useRef(false);
+
+  useEffect(() => {
+    if (!path || !LIVE.test(path)) return;
+    const refresh = () => {
+      quiet.current = true;
+      setTick((value) => value + 1);
+    };
+    changes.addEventListener("change", refresh);
+    return () => changes.removeEventListener("change", refresh);
+  }, [path]);
 
   useEffect(() => {
     if (!path || !has) {
@@ -22,10 +41,15 @@ export function useFetch<T>(path: string | null) {
       return;
     }
     let live = true;
-    setState((prev) => ({ ...prev, loading: true, error: "" }));
+    const silent = quiet.current;
+    quiet.current = false;
+    if (!silent) setState((prev) => ({ ...prev, loading: true, error: "" }));
     api<T>(path, tokenRef.current)
-      .then((data) => live && setState({ data, error: "", loading: false }))
-      .catch((err) => live && setState((prev) => ({ ...prev, error: errorText(err), loading: false })));
+      .then((data) => {
+        if (!live) return;
+        setState((prev) => (silent && prev.data && JSON.stringify(prev.data) === JSON.stringify(data) ? prev : { data, error: "", loading: false }));
+      })
+      .catch((err) => live && !silent && setState((prev) => ({ ...prev, error: errorText(err), loading: false })));
     return () => {
       live = false;
     };

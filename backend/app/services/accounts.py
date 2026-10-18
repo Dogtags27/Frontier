@@ -90,7 +90,7 @@ class AccountService:
         if found:
             return await self.orgs.current_invite(str(found[0][0]), user_id)
         org_id = str(uuid.uuid4())
-        name = f"{display_name or 'Class'}'s class"
+        name = f"{display_name or 'Instructor'}'s Team"
         await self.pg.execute(SQL.INSERT_ORG, (org_id, name[:80], user_id))
         await self.pg.execute(SQL.SET_ORG, (org_id, user_id))
         return await self.orgs.rotate(org_id, user_id)
@@ -187,7 +187,43 @@ class OrgService:
         result = await self.pg.transaction(write)
         if result is None:
             raise NotFound("not found")
+        org = await self.pg.fetch(SQL.ORG_BY_ID, (result["org_id"],))
+        result["name"] = org[0][1] if org else ""
         return result
+
+    async def mine(self, student_id: str) -> list[dict]:
+        rows = await self.pg.fetch(SQL.MY_ORGS, (student_id,))
+        return [
+            {
+                "id": str(row[0]),
+                "name": row[1],
+                "supervisor": row[2],
+                "joined_at": row[3].isoformat() if hasattr(row[3], "isoformat") else str(row[3]),
+                "members": int(row[4]),
+            }
+            for row in rows
+        ]
+
+    async def leave(self, student_id: str, org_id: str) -> None:
+        try:
+            uuid.UUID(org_id)
+        except ValueError as exc:
+            raise NotFound("not found") from exc
+        await self.pg.execute(SQL.LEAVE_ORG, (org_id, student_id))
+        await self.pg.execute(SQL.RESET_ORG, (student_id, student_id))
+
+    async def info(self, org_id: str, owner_id: str) -> dict:
+        org = await self._owned(org_id, owner_id)
+        count = await self.pg.fetch(SQL.ORG_MEMBER_COUNT, (org_id,))
+        return {"id": str(org[0]), "name": org[1], "members": int(count[0][0]) if count else 0}
+
+    async def rename(self, org_id: str, owner_id: str, name: str) -> dict:
+        await self._owned(org_id, owner_id)
+        clean = " ".join(name.split())[:60]
+        if not clean:
+            raise Conflict("the team needs a name")
+        await self.pg.execute(SQL.RENAME_ORG, (clean, org_id))
+        return await self.info(org_id, owner_id)
 
     async def students(self, org_id: str, owner_id: str) -> list[dict]:
         await self._owned(org_id, owner_id)
@@ -197,6 +233,7 @@ class OrgService:
     async def remove_student(self, org_id: str, owner_id: str, student_id: str) -> None:
         await self._owned(org_id, owner_id)
         await self.pg.execute(SQL.REMOVE_ENROLLMENT, (owner_id, student_id))
+        await self.pg.execute(SQL.RESET_ORG, (student_id, student_id))
 
     async def _owned(self, org_id: str, owner_id: str):
         rows = await self.pg.fetch(SQL.ORG_BY_ID, (org_id,))

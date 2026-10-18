@@ -44,6 +44,11 @@ class MemoryService:
                     "note": note[:280],
                 },
             )
+            try:
+                for _slug, _name, _count in await self.graph.tasks_for([paper_id]):
+                    await handle.query(Q.MARK_KNOWS, {"student": "self", "kind": "task", "ref_id": _slug})
+            except Exception:
+                pass
             return {"id": read_id, "at": at, "paper_id": paper_id, "depth": depth}
 
         return await self._once(handle, key, write)
@@ -188,7 +193,7 @@ class MemoryService:
                 "at": now_iso(),
                 "role": role,
                 "text": text[:6000],
-                "evidence": json.dumps(evidence or [], ensure_ascii=False)[:4000],
+                "evidence": _fit(evidence or []),
                 "intent": intent,
             },
         )
@@ -297,6 +302,15 @@ def _text(value) -> str:
     if isinstance(value, bytes):
         return value.decode()
     return str(value)
+
+
+def _fit(evidence: list, limit: int = 12000) -> str:
+    items = list(evidence)
+    body = json.dumps(items, ensure_ascii=False)
+    while len(body) > limit and items:
+        items.pop()
+        body = json.dumps(items, ensure_ascii=False)
+    return body
 
 
 def _evidence(value) -> list:

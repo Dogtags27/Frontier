@@ -49,7 +49,7 @@ class Scoper(Agent):
         else:
             rows = await ctx.workspace.query(Q.OPEN_GAPS)
             rows = [row for row in rows if int(row[5] or 0) >= 1]
-            rows.sort(key=lambda row: (-(row[2] or 0), as_text(row[0])))
+            rows.sort(key=lambda row: ({"alive": 0, "challenged": 1}.get(as_text(row[1]), 2), -(row[2] or 0), as_text(row[0])))
             if not rows:
                 return None
             gap_id = as_text(rows[0][0])

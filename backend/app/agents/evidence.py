@@ -34,7 +34,7 @@ class Evidence(Agent):
         await ctx.workspace.query(
             Q.SAVE_FINDING,
             {
-                "id": str(uuid.uuid4()),
+                "id": str(uuid.uuid5(uuid.NAMESPACE_URL, f"provenance:{paper_id}:{origin}")),
                 "at": datetime.now(timezone.utc).isoformat(),
                 "kind": "provenance",
                 "paper": paper_id,

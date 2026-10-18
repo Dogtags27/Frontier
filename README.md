@@ -6,7 +6,13 @@ A research companion for computer science papers. One shared FalkorDB graph hold
 **API:** [frontier-backend-api.duckdns.org](https://frontier-backend-api.duckdns.org) · `GET /healthz`  
 **Tracks:** Agents That Act on Connected Data, and Agent Memory and Coordination.
 
-The corpus, the graph model, and the product requirements are the my original work. Cursor was the coding assistant for the implementation of features and services. I have reviewed the code and can explain the model, the queries in this submission and also the underlying architecture.
+The corpus, the graph model, and the product requirements are my original work. Cursor was the coding assistant for the implementation of features and services. I have reviewed the code and can explain the model, the queries in this submission and also the underlying architecture.
+
+## Problem Statements which my project solves
+
+- As a novice research student, you are asked to read multiple papers from your topic of choice. Currently it is very tedious and time taking job to search relevant papers and explore their citations manually across various sites
+- After scavenging multiple papers, research students need to find potential avenues for new research manually. That involves verifying the methods and claims presented by each of the hundreds of research papers.
+- Research involves a lot of time. So one forgets what they read, what they decided in an earlier session. Even if they get papers reliably from LLM agents, the agents often start afresh or compress all past searches which leads to inaccurate data.
 
 ## Architecture
 

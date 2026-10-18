@@ -1,17 +1,70 @@
 # Frontier
 
-A research assistant for computer science papers. Agents query one shared FalkorDB graph and keep each student's memory in a private graph.
+A research companion for computer science papers. One shared FalkorDB graph holds the field. Each student gets a private graph for what they have read, believed, and ruled out. Agents act by querying those graphs, and a coding agent can call the same tools over MCP.
 
-**Track 1: Agents That Act on Connected Data.** **Track 2: Agent Memory and Coordination.**
+**Live app:** [frontend-frontier-delta.vercel.app](https://frontend-frontier-delta.vercel.app)  
+**API:** [frontier-backend-api.duckdns.org](https://frontier-backend-api.duckdns.org) · `GET /healthz`  
+**Tracks:** Agents That Act on Connected Data, and Agent Memory and Coordination.
 
-The participant built the corpus, decided the graph model, and wrote the product requirements. Cursor was the coding assistant for the backend. The participant reviewed the code and can explain the model, the queries, and the architecture.
+The corpus, the graph model, and the product requirements are the participant's work. Cursor was the coding assistant for the implementation. The participant reviewed the code and can explain the model, the queries, and the architecture.
 
-## Run
+## How a question moves
 
-The server is the `backend/` directory. `data/` is not deployed with it. The corpus already lives in FalkorDB, Postgres, and R2.
+```mermaid
+flowchart LR
+  student[Student browser]
+  agent[Cursor or Claude]
+  web[Vercel<br/>React]
+  api[AWS<br/>FastAPI and worker]
+  auth[Supabase Auth]
+  graph[FalkorDB<br/>corpus plus one graph per student]
+  pg[Postgres<br/>accounts and sentences]
+  r2[Cloudflare R2<br/>PDFs]
+  llm[OpenAI]
+
+  student --> web --> api
+  agent -->|MCP at /mcp/| api
+  web --> auth
+  api --> auth
+  api --> graph
+  api --> pg
+  api --> r2
+  api --> llm
+  graph --> api
+```
+
+The web app and the MCP server call one API. Supabase signs the student in, including Google sign-in, and issues the token an external agent refreshes after the student approves it at `/oauth/consent`. FalkorDB is the system of record for papers and for memory. Postgres holds accounts, usage, and the original sentences behind a citation. R2 holds the PDFs. A push to `main` that changes `backend/` rebuilds the API and the worker on the AWS host. The FalkorDB container is not part of that deploy.
+
+Remove FalkorDB and search, citation paths, gaps, notes, and scooping stop. The API cannot answer those from Postgres.
+
+## What the agents do with the graph
+
+An agent does not invent a reading path or a verdict and then look for support. It calls graph tools and shows the path it walked.
+
+- **Connected reasoning.** `citation_chain` walks `CITES`. `shortest_path` calls FalkorDB `algo.SPpaths` and returns the papers on the path, at most four hops. Gap search looks for a task and method cell that the corpus has not filled, then ranks it from neighboring papers and evidence already on the graph.
+- **The same tools, two doors.** The chat in the app and an external client both use the toolkit served at `https://frontier-backend-api.duckdns.org/mcp/` (keep the slash). A client that connects with no token gets a `401` pointing at `/.well-known/oauth-protected-resource`. After the student allows access, the agent can search, walk citations, record a note, and open a gap on that student's graph only. A supervisor token is refused.
+- **Writes are graph transitions.** Opening a gap, challenging it, killing it, adopting it, or marking it scooped is one Cypher statement. A scoop adds `SCOOPED_BY` and closes the belief it replaced. The answer carries the tool trace and the sentence ids it used.
+
+## What each student keeps
+
+Memory is split by kind, and none of it is copied out of the corpus. Private nodes store ids.
+
+| Kind | Where it lives | What it is |
+| --- | --- | --- |
+| Episodic | `ReadEvent`, `Decision`, `Event` | A paper read, a verdict, and the timeline of both |
+| Semantic | `Memory` with `valid_from` and `valid_to` | A fact that can be closed when a later paper overturns it |
+| Procedural | `ReadingPath`, `Playbook` | The order to read next, and the experiment plan that already worked for a gap |
+| Conversation | chat nodes on the private graph | The thread is still there after the student leaves |
+| Handoff | `Handoff` | A gap moves from one agent to the next only when its precondition holds |
+| Isolation | `frontier_ws_<user>` | One graph per student. A supervisor sees progress, not chats |
+
+The shape of both graphs, the edge list, and the lifecycle are in [GRAPH.md](GRAPH.md). Every Cypher statement the product runs is in `backend/app/models/queries.py`.
+
+## Run it locally
+
+The corpus is already loaded. `data/` is not part of the server. From `backend/`:
 
 ```
-cd backend
 python -m venv .venv
 .venv\Scripts\pip install -e ".[dev]"
 copy .env.example .env
@@ -19,38 +72,12 @@ copy .env.example .env
 .venv\Scripts\python -m app.utilities.worker
 ```
 
-`GET /healthz` is liveness. `GET /readyz` checks the three stores. The first boot applies `migrations/`.
+`GET /readyz` checks FalkorDB, Postgres, and R2. The first boot applies `migrations/`.
 
-## AWS
-
-Copy `backend/` to the instance. Fill `.env` from `.env.example`. Point `FALKORDB_HOST`, `DATABASE_URL`, and `R2_*` at the existing stores. Set `SUPABASE_URL`, `SUPABASE_JWT_ISSUER`, `OPENAI_API_KEY`, and `ADMIN_EMAILS`. Set `MCP_ALLOWED_HOSTS` to the public hostname. Open port 8000.
-
-```
-docker compose -f docker-compose.aws.yml up -d --build
-```
-
-That starts the API and the worker. It does not start FalkorDB or Postgres.
-
-## Use the tools from a coding agent (MCP)
-
-The server speaks MCP over HTTP at `https://frontier-backend-api.duckdns.org/mcp/` (keep the trailing slash). Sign-in uses OAuth, so there is no token to copy. Add the server to the agent and approve the browser prompt with a student account (Google or email).
+## Connect a coding agent
 
 ```json
 { "mcpServers": { "frontier": { "url": "https://frontier-backend-api.duckdns.org/mcp/" } } }
 ```
 
-The agent gets a `401` that points to `/.well-known/oauth-protected-resource`, finds Supabase Auth as the authorization server, and sends you to `/oauth/consent` on the web app. After you allow it, Supabase issues the token and the agent refreshes it on its own. The tools act on that student's private graph only. Supervisor accounts are refused.
-
-## Graph
-
-`frontier_corpus` is shared: papers, tasks, methods, datasets, metrics, and claims. The edges the product uses are `CITES`, `ADDRESSES`, `USES_METHOD`, `COMPARES_TO`, `EVALUATED_ON`, `REPORTS_METRIC`, and `HAS_CLAIM`. Embeddings stay here.
-
-`frontier_ws_<user>` is private: gaps, reads, decisions, memories, a reading path, and an experiment plan. Those nodes store corpus ids, not copies. A supervisor sees progress, not chats.
-
-A gap moves `candidate → challenged → alive | killed → adopted | scooped`. A scoop adds `SCOOPED_BY` and closes the old belief. `as_of` uses `valid_from` and `valid_to`.
-
-Episodic memory is reads, decisions, and events. Semantic memory is a fact with a validity window. Procedural memory is the reading path and the experiment plan.
-
-Cypher and SQL live only in `backend/app/models/queries.py`. The product depends on the gap-cell queries, `algo.SPpaths` for citation paths, the single-statement work claim, and the scoop update.
-
-Without FalkorDB, search, gaps, citation paths, memory, and scoop stop. Postgres holds accounts, usage, and the open-gap index.
+Sign in as a student when the browser opens. The tools then write to that student's graph.

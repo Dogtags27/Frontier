@@ -40,6 +40,12 @@ jobs:
           trap 'rm -f "$ENV_FILE"' EXIT
           printf '%s\n' "$BACKEND_ENV" > "$ENV_FILE"
 
+          docker builder prune -af >/dev/null 2>&1 || true
+          avail="$(df -Pm / | awk 'NR==2 {print $4}')"
+          if [ "$avail" -lt 1200 ]; then
+            echo "Only ${avail}MB free on /. Refusing to rebuild so FalkorDB can keep writing."
+            exit 1
+          fi
           docker build -t frontier-api backend
 
           docker rm -f frontier-api-old >/dev/null 2>&1 || true
@@ -78,5 +84,6 @@ jobs:
           fi
 
           docker rm frontier-api-old frontier-worker-old >/dev/null 2>&1 || true
+          docker builder prune -af >/dev/null 2>&1 || true
           docker image prune -f >/dev/null 2>&1 || true
           echo deployed

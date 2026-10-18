@@ -22,15 +22,9 @@ copy .env.example .env
 
 `GET /healthz` is liveness. `GET /readyz` checks the three stores. The first boot applies `migrations/`.
 
-## AWS
+## Production
 
-Copy this directory to the instance. Fill `.env` from `.env.example`. Point `FALKORDB_HOST`, `DATABASE_URL`, and `R2_*` at the existing stores. Set `SUPABASE_URL`, `SUPABASE_JWT_ISSUER`, `OPENAI_API_KEY`, and `ADMIN_EMAILS`. Set `MCP_ALLOWED_HOSTS` to the public hostname. Open port 8000.
-
-```
-docker compose -f docker-compose.aws.yml up -d --build
-```
-
-That starts the API and the worker. It does not start FalkorDB or Postgres.
+The running API is [frontier-backend-api.duckdns.org](https://frontier-backend-api.duckdns.org). The app is [frontend-frontier-delta.vercel.app](https://frontend-frontier-delta.vercel.app). A push to `main` that changes `backend/` rebuilds the API and the worker. FalkorDB stays up. The layout is in the repository [README](../README.md) and [GRAPH.md](../GRAPH.md).
 
 ## Graph
 

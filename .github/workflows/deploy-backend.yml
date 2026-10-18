@@ -1,5 +1,7 @@
 name: Deploy backend
 
+# Runs on the runner installed on the AWS instance, so no inbound SSH is needed.
+# Only pushes to main and manual runs trigger it. Never add pull_request here.
 on:
   push:
     branches: [main]
@@ -8,69 +10,73 @@ on:
       - ".github/workflows/deploy-backend.yml"
   workflow_dispatch:
 
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-backend
+  cancel-in-progress: false
+
 jobs:
   deploy:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, frontier-aws]
+    timeout-minutes: 20
     steps:
-      - name: Rebuild the API and worker on AWS
-        uses: appleboy/ssh-action@v1.2.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Rebuild the API and worker
         env:
           BACKEND_ENV: ${{ secrets.BACKEND_ENV }}
-        with:
-          host: 3.146.214.137
-          username: ubuntu
-          key: ${{ secrets.AWS_SSH_KEY }}
-          command_timeout: 20m
-          script_stop: true
-          envs: BACKEND_ENV
-          script: |
-            set -eu
-            if [ -z "${BACKEND_ENV:-}" ]; then
-              echo "BACKEND_ENV secret is empty; leaving the running containers as they are"
-              exit 1
-            fi
-            printf '%s\n' "$BACKEND_ENV" > /tmp/frontier.env
-            cd /home/ubuntu/Frontier
-            git fetch origin main
-            git reset --hard origin/main
-            docker build -t frontier-api backend
+        run: |
+          set -eu
+          if [ -z "${BACKEND_ENV:-}" ]; then
+            echo "BACKEND_ENV secret is empty; leaving the running containers as they are"
+            exit 1
+          fi
+          ENV_FILE="$(mktemp)"
+          chmod 600 "$ENV_FILE"
+          trap 'rm -f "$ENV_FILE"' EXIT
+          printf '%s\n' "$BACKEND_ENV" > "$ENV_FILE"
 
-            docker rm -f frontier-api-old >/dev/null 2>&1 || true
-            docker stop frontier-api
-            docker rename frontier-api frontier-api-old
-            if ! docker run -d --name frontier-api --restart unless-stopped --network frontier -p 127.0.0.1:8000:8000 --env-file /tmp/frontier.env frontier-api; then
-              docker rename frontier-api-old frontier-api
-              docker start frontier-api
-              exit 1
-            fi
+          docker build -t frontier-api backend
 
-            ok=0
-            for _ in 1 2 3 4 5 6 7 8 9 10 11 12; do
-              if curl -sf http://127.0.0.1:8000/healthz >/dev/null; then
-                ok=1
-                break
-              fi
-              sleep 2
-            done
-            if [ "$ok" != 1 ]; then
-              docker logs --tail 40 frontier-api || true
-              docker rm -f frontier-api
-              docker rename frontier-api-old frontier-api
-              docker start frontier-api
-              exit 1
-            fi
-            curl -sf http://127.0.0.1:8000/.well-known/oauth-protected-resource/mcp >/dev/null
+          docker rm -f frontier-api-old >/dev/null 2>&1 || true
+          docker stop frontier-api
+          docker rename frontier-api frontier-api-old
+          if ! docker run -d --name frontier-api --restart unless-stopped --network frontier -p 127.0.0.1:8000:8000 --env-file "$ENV_FILE" frontier-api; then
+            docker rename frontier-api-old frontier-api
+            docker start frontier-api
+            exit 1
+          fi
 
-            docker rm -f frontier-worker-old >/dev/null 2>&1 || true
-            docker stop frontier-worker
-            docker rename frontier-worker frontier-worker-old
-            if ! docker run -d --name frontier-worker --restart unless-stopped --network frontier --env-file /tmp/frontier.env frontier-api python -m app.utilities.worker; then
-              docker rename frontier-worker-old frontier-worker
-              docker start frontier-worker
-              exit 1
+          ok=0
+          for _ in 1 2 3 4 5 6 7 8 9 10 11 12; do
+            if curl -sf http://127.0.0.1:8000/healthz >/dev/null; then
+              ok=1
+              break
             fi
+            sleep 2
+          done
+          if [ "$ok" != 1 ]; then
+            docker logs --tail 40 frontier-api || true
+            docker rm -f frontier-api
+            docker rename frontier-api-old frontier-api
+            docker start frontier-api
+            exit 1
+          fi
+          curl -sf http://127.0.0.1:8000/.well-known/oauth-protected-resource/mcp >/dev/null
 
-            rm -f /tmp/frontier.env
-            docker rm frontier-api-old frontier-worker-old >/dev/null 2>&1 || true
-            docker image prune -f >/dev/null 2>&1 || true
-            echo deployed
+          docker rm -f frontier-worker-old >/dev/null 2>&1 || true
+          docker stop frontier-worker
+          docker rename frontier-worker frontier-worker-old
+          if ! docker run -d --name frontier-worker --restart unless-stopped --network frontier --env-file "$ENV_FILE" frontier-api python -m app.utilities.worker; then
+            docker rename frontier-worker-old frontier-worker
+            docker start frontier-worker
+            exit 1
+          fi
+
+          docker rm frontier-api-old frontier-worker-old >/dev/null 2>&1 || true
+          docker image prune -f >/dev/null 2>&1 || true
+          echo deployed
